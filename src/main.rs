@@ -63,34 +63,117 @@ struct PlayerInput {
     right: KeyCode,
 }
 
+enum RoundState {
+    Playing,
+    RoundOver { winner: Option<usize> },
+}
+
 struct Game {
     players: Vec<Player>,
     inputs: Vec<PlayerInput>,
+    scores: Vec<u32>,
+    round_state: RoundState,
+}
+
+fn draw_border() {
+    let thickness = 4.0;
+
+    draw_rectangle_lines(
+        0.0,
+        0.0,
+        SCREEN_W,
+        SCREEN_H,
+        thickness,
+        WHITE,);
 }
 
 impl Game {
     fn update(&mut self, dt: f32) {
-        for (p, input) in self.players.iter_mut().zip(self.inputs.iter()) {
-            let mut turn = 0.0;
+        if let RoundState::Playing = self.round_state {
+            for (p, input) in self.players.iter_mut().zip(self.inputs.iter()) {
+                let mut turn = 0.0;
 
-            if is_key_down(input.left) {
-                turn -= 1.0;
-            }
-            if is_key_down(input.right) {
-                turn += 1.0;
+                if is_key_down(input.left) {
+                    turn -= 1.0;
+                }
+                if is_key_down(input.right) {
+                    turn += 1.0;
+                }
+
+                p.update(dt, turn);
             }
 
-            p.update(dt, turn);
+            check_collision(&mut self.players);
+
+            // COunt alivbe players
+            let alive: Vec<usize> = self.players.iter()
+                .enumerate()
+                .filter(|(_, p)| p.alive)
+                .map(|(i, _)| i)
+                .collect();
+
+            if alive.len() <= 1 {
+                let winner = alive.first().cloned();
+
+                if let Some(w) = winner {
+                    self.scores[w] += 1;
+                }
+
+                self.round_state = RoundState::RoundOver { winner };
+            }
+
         }
-
-        check_collision(&mut self.players);
     }
 
     fn draw(&self) {
+        draw_border();
+
         for p in &self.players {
             p.draw();
         }
+
+        // Scores
+        for (i, score) in self.scores.iter().enumerate() {
+            draw_text(
+                &format!("P{}: {}", i + 1, score),
+                 20.0,
+                 30.0 + i as f32 * 25.0,
+                 25.0,
+                 self.players[i].color
+            );
+        }
+
+        // Round results
+        if let RoundState::RoundOver { winner } = self.round_state {
+            let text = match winner {
+                Some(i) => format!("Player {} wins! Press SPACE to continue", i + 1),
+                None => "It's a tie! Press SPACE to continue".to_string(),
+            };
+
+            draw_text(&text, 200.0, 50.0, 30.0, YELLOW);
+        }
     }
+
+    fn restart_round(&mut self) {
+        use macroquad::rand::gen_range;
+
+        let margin = 50.0;
+
+        for p in &mut self.players {
+            p.pos = vec2(
+                gen_range(margin, SCREEN_W - margin),
+                gen_range(margin, SCREEN_H - margin),
+            );
+            p.dir = gen_range(0.0, std::f32::consts::PI * 2.0);
+            p.trail.clear();
+            p.trail.push(p.pos);
+            p.alive = true;
+        }
+
+
+        self.round_state = RoundState::Playing;
+    }
+
 }
 
 // ================== MENU ==================
@@ -323,7 +406,12 @@ impl Menu {
             }
         }).collect();
 
-        Game { players, inputs }
+        Game {
+            players,
+            inputs,
+            scores: vec![0; self.configs.len()],
+            round_state: RoundState::Playing,
+        }
     }
 }
 
@@ -397,6 +485,12 @@ async fn main() {
             AppState::Playing(game) => {
                 game.update(dt);
                 game.draw();
+
+                if let RoundState::RoundOver { .. }  = game.round_state {
+                    if is_key_pressed(KeyCode::Space) {
+                        game.restart_round();
+                    }
+                }
 
                 if is_key_pressed(KeyCode::Escape) {
                     state = AppState::Menu(Menu::new());
