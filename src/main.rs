@@ -21,7 +21,11 @@ struct Player {
     dir: f32,
     color: Color,
     alive: bool,
-    trail: Vec<Vec2>,
+    trail: Vec<Option<Vec2>>,
+
+    hole_timer: f32,
+    hole_cooldown: f32,
+    in_hole: bool,
 }
 
 impl Player {
@@ -31,7 +35,10 @@ impl Player {
             dir,
             color,
             alive: true,
-            trail: vec![pos],
+            trail: vec![Some(pos)],
+            hole_timer: 0.0,
+            hole_cooldown: rand::gen_range(1.5, 3.0),
+            in_hole: false,
         }
     }
 
@@ -39,20 +46,42 @@ impl Player {
         if !self.alive { return; }
 
         self.dir += turn * TURN_SPEED * dt;
+        self.hole_timer += dt;
 
         let velocity = vec2(self.dir.cos(), self.dir.sin()) * SPEED * dt;
         self.pos += velocity;
 
-        if self.trail.last().unwrap().distance(self.pos) > TRAIL_STEP {
-            self.trail.push(self.pos);
+        if self.in_hole && self.hole_timer > 0.3 {
+            self.in_hole = false;
+            self.hole_timer = 0.0;
+            self.hole_cooldown = rand::gen_range(1.5, 3.0);
+            
+        } else if !self.in_hole && self.hole_timer > self.hole_cooldown {
+            self.in_hole = true;
+            self.hole_timer = 0.0;
+        }
+
+        let last = self.trail.iter().rev().find_map(|&p| p);
+
+        if let Some(last_pos) = last {
+            if last_pos.distance(self.pos) > TRAIL_STEP {
+                if self.in_hole {
+                    // Only insert one None (avoid spam)
+                    if !matches!(self.trail.last(), Some(None)) {
+                        self.trail.push(None);
+                    }
+                } else {
+                    self.trail.push(Some(self.pos));
+                }
+            }
         }
     }
 
     fn draw(&self) {
         for i in 1..self.trail.len() {
-            let a = self.trail[i - 1];
-            let b = self.trail[i];
-            draw_line(a.x, a.y, b.x, b.y, 3.0, self.color);
+            if let (Some(a), Some(b)) = (self.trail[i - 1], self.trail[i]) {
+                draw_line(a.x, a.y, b.x, b.y, 3.0, self.color);
+            }
         }
         draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
     }
@@ -186,7 +215,7 @@ impl Game {
             );
             p.dir = gen_range(0.0, std::f32::consts::PI * 2.0);
             p.trail.clear();
-            p.trail.push(p.pos);
+            p.trail.push(Some(p.pos));
             p.alive = true;
         }
 
@@ -482,9 +511,11 @@ fn check_collision(players: &mut [Player]) {
                     continue;
                 }
 
-                if distance_to_segment(players[i].pos, trail[k - 1], trail[k]) < COLLISION_RADIUS {
-                    players[i].alive = false;
-                    break;
+                if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
+                    if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
+                        players[i].alive = false;
+                        break;
+                    }
                 }
             }
 
