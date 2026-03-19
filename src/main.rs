@@ -66,6 +66,7 @@ struct PlayerInput {
 enum RoundState {
     Playing,
     RoundOver { winner: Option<usize> },
+    MatchOver { winner: Option<usize> },
 }
 
 struct Game {
@@ -73,6 +74,7 @@ struct Game {
     inputs: Vec<PlayerInput>,
     scores: Vec<u32>,
     round_state: RoundState,
+    target_score: u32,
 }
 
 fn draw_border() {
@@ -117,6 +119,11 @@ impl Game {
 
                 if let Some(w) = winner {
                     self.scores[w] += 1;
+
+                    if self.scores[w] >= self.target_score {
+                        self.round_state = RoundState::MatchOver { winner: Some(w) };
+                        return;
+                    }
                 }
 
                 self.round_state = RoundState::RoundOver { winner };
@@ -143,15 +150,28 @@ impl Game {
             );
         }
 
-        // Round results
-        if let RoundState::RoundOver { winner } = self.round_state {
-            let text = match winner {
-                Some(i) => format!("Player {} wins! Press SPACE to continue", i + 1),
-                None => "It's a tie! Press SPACE to continue".to_string(),
-            };
+        // results
+        match self.round_state {
+            RoundState::RoundOver { winner } =>{
+                let text = match winner {
+                    Some(i) => format!("Player {} wins! Press SPACE to continue", i + 1),
+                    None => "It's a tie! Press SPACE to continue".to_string(),
+                };
 
-            draw_text(&text, 200.0, 50.0, 30.0, YELLOW);
+                draw_text(&text, 200.0, 50.0, 30.0, YELLOW);
+            },
+            RoundState::MatchOver { winner } => {
+                let text = match winner {
+                    Some(i) => format!("Player {} wins the match!", i + 1),
+                    None => "It's a tie! Press SPACE to restart".to_string(),
+                };
+
+                draw_text(&text, 180.0, 50.0, 40.0, YELLOW);
+                draw_text("R = Replay | ENTER = Menu", 220.0, 90.0, 25.0, YELLOW);
+            },
+            _ => {}
         }
+        
     }
 
     fn restart_round(&mut self) {
@@ -172,6 +192,12 @@ impl Game {
 
 
         self.round_state = RoundState::Playing;
+    }
+
+    fn restart_match(&mut self) {
+        self.scores = vec![0; self.players.len()];
+        // self.scores.iter_mut().for_each(|s| *s = 0);
+        self.restart_round();
     }
 
 }
@@ -195,6 +221,7 @@ struct Menu {
     configs: Vec<PlayerConfig>,
     selected: usize,
     binding: BindingState,
+    target_score: u32,
 }
 
 fn key_to_string(key: Option<KeyCode>) -> String {
@@ -216,6 +243,7 @@ impl Menu {
             configs: vec![],
             selected: 0,
             binding: BindingState::None,
+            target_score: 5,
         }
     }
 
@@ -268,6 +296,14 @@ impl Menu {
         // Start binding
         if is_key_pressed(KeyCode::Space) && !self.configs.is_empty() {
             self.binding = BindingState::Left(self.selected);
+        }
+
+        if is_key_pressed(KeyCode::Left) && self.target_score > 1 {
+            self.target_score -= 1;
+        }
+
+        if is_key_pressed(KeyCode::Right) && self.target_score < 99 {
+            self.target_score += 1;
         }
 
         // Handle key input
@@ -325,6 +361,7 @@ impl Menu {
         draw_text("SPACE = Bind keys", 20.0, 140.0, 25.0, WHITE);
         draw_text("C = Change color", 20.0, 170.0, 25.0, WHITE);
         draw_text("ENTER = Start", 20.0, 200.0, 25.0, WHITE);
+        draw_text(&format!("Target Score: {} (Left/Right to change)", self.target_score), 20.0, 230.0, 25.0, WHITE);
 
         for (i, p) in self.configs.iter().enumerate() {
             let y = 260.0 + i as f32 * 40.0;
@@ -411,6 +448,7 @@ impl Menu {
             inputs,
             scores: vec![0; self.configs.len()],
             round_state: RoundState::Playing,
+            target_score: self.target_score,
         }
     }
 }
@@ -486,12 +524,25 @@ async fn main() {
                 game.update(dt);
                 game.draw();
 
-                if let RoundState::RoundOver { .. }  = game.round_state {
-                    if is_key_pressed(KeyCode::Space) {
-                        game.restart_round();
-                    }
-                }
 
+                match game.round_state {
+                    RoundState::RoundOver { .. } => {
+                        if is_key_pressed(KeyCode::Space) {
+                            game.restart_round();
+                        }
+                    }
+                    RoundState::MatchOver { .. } => {
+                        if is_key_pressed(KeyCode::R) {
+                            game.restart_match();
+                        }
+
+                        if is_key_pressed(KeyCode::Enter) {
+                            state = AppState::Menu(Menu::new());
+                        }
+                    }
+                    _ => {}
+                }
+                
                 if is_key_pressed(KeyCode::Escape) {
                     state = AppState::Menu(Menu::new());
                 }
