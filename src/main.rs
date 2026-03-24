@@ -796,7 +796,7 @@ enum AppState {
 
 fn window_conf() -> Conf {
     Conf {
-        window_title: "Curve Fever Clone".to_string(),
+        window_title: "Zachtung!".to_string(),
         window_width: WINDOW_W as i32,
         window_height: WINDOW_H as i32,
         ..Default::default()
