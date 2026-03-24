@@ -342,6 +342,27 @@ impl Menu {
     }
 
     fn update(&mut self) {
+
+        // Ignore input if we're currently binding keys
+        if !matches!(self.binding, BindingState::None) {
+            if let Some(key) = get_last_key_pressed() {
+                if !self.key_in_use(key) {
+                    match self.binding {
+                        BindingState::Left(i) => {
+                            self.configs[i].left = Some(key);
+                            self.binding = BindingState::Right(i);
+                        }
+                        BindingState::Right(i) => {
+                            self.configs[i].right = Some(key);
+                            self.binding = BindingState::None;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return;
+        }
+
         // Add player
         if is_key_pressed(KeyCode::N) {
             let color = self.next_free_color();
@@ -372,23 +393,6 @@ impl Menu {
 
         if is_key_pressed(KeyCode::Right) && self.target_score < 99 {
             self.target_score += 1;
-        }
-
-        // Handle key input
-        if let Some(key) = get_last_key_pressed() {
-            if !self.key_in_use(key) {
-                match self.binding {
-                    BindingState::Left(i) => {
-                        self.configs[i].left = Some(key);
-                        self.binding = BindingState::Right(i);
-                    }
-                    BindingState::Right(i) => {
-                        self.configs[i].right = Some(key);
-                        self.binding = BindingState::None;
-                    }
-                    _ => {}
-                }
-            }
         }
 
         // Change color
