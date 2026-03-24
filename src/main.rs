@@ -20,6 +20,21 @@ const COLORS: [Color; 6] = [RED, BLUE, GREEN, YELLOW, ORANGE, PINK];
 
 // ================== GAME CORE ==================
 
+#[derive(Clone, Copy)]
+enum PowerupType {
+    SpeedSelf,
+    SpeedOthers,
+    SlowSelf,
+    SlowOthers,
+    ThickenTrail,
+}
+
+struct  Powerup {
+    pos: Vec2,
+    kind: PowerupType,
+}
+
+
 #[derive(Clone)]
 struct Player {
     pos: Vec2,
@@ -31,6 +46,11 @@ struct Player {
     hole_timer: f32,
     hole_cooldown: f32,
     in_hole: bool,
+
+    speed_multiplier: f32,
+    turn_multiplier: f32,
+    effect_timer: f32,
+    trail_thickness: f32,
 }
 
 impl Player {
@@ -44,6 +64,10 @@ impl Player {
             hole_timer: 0.0,
             hole_cooldown: rand::gen_range(1.5, 3.0),
             in_hole: false,
+            speed_multiplier: 1.0,
+            turn_multiplier: 1.0,
+            effect_timer: 0.0,
+            trail_thickness: 3.0,
         }
     }
 
@@ -58,7 +82,7 @@ impl Player {
         self.hole_timer += dt;
 
         let velocity = self.get_direction_vector() * config.speed * dt;
-        self.pos += velocity;
+        self.pos += velocity * self.speed_multiplier;
 
         if self.in_hole && self.hole_timer > config.hole_duration {
             self.in_hole = false;
@@ -85,12 +109,21 @@ impl Player {
                 }
             }
         }
+
+        if self.effect_timer > 0.0 {
+            self.effect_timer -= dt;
+            if self.effect_timer <= 0.0 {
+                self.speed_multiplier = 1.0;
+                self.turn_multiplier = 1.0;
+                self.trail_thickness = 3.0;
+            }
+        }
     }
 
     fn draw(&self, show_direction: bool) {
         for i in 1..self.trail.len() {
             if let (Some(a), Some(b)) = (self.trail[i - 1], self.trail[i]) {
-                draw_line(a.x, a.y, b.x, b.y, 3.0, self.color);
+                draw_line(a.x, a.y, b.x, b.y, self.trail_thickness, self.color);
             }
         }
         if show_direction {
@@ -105,6 +138,39 @@ impl Player {
             );
         }
         draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
+    }
+}
+
+fn apply_powerup(player_idx: usize, kind: PowerupType, players: &mut [Player], config: &mut GameConfig) {
+    match kind {
+        PowerupType::SpeedSelf => {
+            players[player_idx].speed_multiplier = 1.5;
+            players[player_idx].effect_timer = 5.0;
+        }
+        PowerupType::SpeedOthers => {
+            for (i, p) in players.iter_mut().enumerate() {
+                if i != player_idx {
+                    p.speed_multiplier = 1.5;
+                    p.effect_timer = 5.0;
+                }
+            }
+        }
+        PowerupType::SlowOthers => {
+            players[player_idx].speed_multiplier = 0.5;
+            players[player_idx].effect_timer = 5.0;
+        }
+        PowerupType::SlowSelf => {
+            for (i, p) in players.iter_mut().enumerate() {
+                if i != player_idx {
+                    p.speed_multiplier = 0.5;
+                    p.effect_timer = 5.0;
+                }
+            }
+        }
+        PowerupType::ThickenTrail => {
+            players[player_idx].trail_thickness = 6.0;
+            players[player_idx].effect_timer = 5.0;
+        }
     }
 }
 
@@ -129,6 +195,8 @@ struct GameConfig {
     hole_interval_max: f32,
     hole_duration: f32,
     target_score: u32,
+
+    powerups_enabled: bool,
 }
 
 struct Game {
@@ -138,6 +206,9 @@ struct Game {
     round_state: RoundState,
 
     config: GameConfig,
+
+    powerups: Vec<Powerup>,
+    spawn_timer: f32,
 }
 
 fn draw_border() {
@@ -164,6 +235,28 @@ impl Game {
         }
 
         if let RoundState::Playing = self.round_state {
+            if self.config.powerups_enabled {
+            self.spawn_timer += dt;
+            if self.spawn_timer > 5.0 {
+                self.spawn_timer = 0.0;
+
+                use macroquad::rand::gen_range;
+                let pos = vec2(
+                    gen_range(50.0, SCREEN_W - 50.0),
+                    gen_range(50.0, SCREEN_H - 50.0),
+                );
+                let kind = match gen_range(0, 4) {
+                    0 => PowerupType::SpeedSelf,
+                    1 => PowerupType::SpeedOthers,
+                    2 => PowerupType::SlowSelf,
+                    3 => PowerupType::SlowOthers,
+                    _ => PowerupType::ThickenTrail,
+                };
+
+                self.powerups.push(Powerup { pos, kind });
+            }
+        }
+
             for (p, input) in self.players.iter_mut().zip(self.inputs.iter()) {
                 let mut turn = 0.0;
 
@@ -178,6 +271,21 @@ impl Game {
             }
 
             check_collision(&mut self.players);
+
+            for i in 0..self.players.len() {
+                if !self.players[i].alive { continue; }
+
+                let player_pos = self.players[i].pos;
+
+                self.powerups.retain(|p| {
+                    if player_pos.distance(p.pos) < 10.0 {
+                        apply_powerup(i, p.kind, &mut self.players, &mut self.config);
+                        false // remove powerup
+                    } else {
+                        true
+                    }
+                });
+            }
 
             // Count alive players
             let alive: Vec<usize> = self.players.iter()
@@ -199,6 +307,7 @@ impl Game {
                 }
 
                 self.round_state = RoundState::RoundOver { winner };
+                self.powerups.clear();
             }
 
         }
@@ -211,6 +320,17 @@ impl Game {
 
         for p in &self.players {
             p.draw(show_direction);
+        }
+        // Powerups
+        for p in &self.powerups {
+            let color = match p.kind {
+                PowerupType::SpeedSelf => YELLOW,
+                PowerupType::SpeedOthers => PINK,
+                PowerupType::SlowSelf => ORANGE,
+                PowerupType::SlowOthers => RED,
+                PowerupType::ThickenTrail => BLUE,
+            };
+            draw_circle(p.pos.x, p.pos.y, 6.0, color);
         }
 
         // Scores
@@ -227,6 +347,16 @@ impl Game {
                  25.0,
                  self.players[i].color
             );
+        }
+        // Powerup info
+        if self.config.powerups_enabled {
+            let y_offset = 80.0 + self.players.len() as f32 * 30.0 + 40.0;
+            draw_text("POWERUPS:", panel_x, y_offset, 30.0, WHITE);
+            draw_text("Yellow: Speed Self", panel_x, y_offset + 40.0, 20.0, YELLOW);
+            draw_text("Pink: Speed Others", panel_x, y_offset + 70.0, 20.0, PINK);
+            draw_text("Orange: Slow Self", panel_x, y_offset + 100.0, 20.0, ORANGE);
+            draw_text("Red: Slow Others", panel_x, y_offset + 130.0, 20.0, RED);
+            //draw_text("Blue: Thicken Trail", panel_x, y_offset + 160.0, 20.0, BLUE);
         }
 
 
@@ -333,6 +463,7 @@ impl Menu {
                 hole_interval_max: 3.0,
                 hole_duration: 0.3,
                 target_score: 5,
+                powerups_enabled: true,
             },
             config_selected: 0,
         }
@@ -387,7 +518,7 @@ impl Menu {
         }
 
         if is_key_pressed(KeyCode::U) {
-            self.config_selected = (self.config_selected + 1) % 6;
+            self.config_selected = (self.config_selected + 1) % 7;
         }
 
         // Add player
@@ -428,6 +559,9 @@ impl Menu {
                 5 => {
                     self.game_config.target_score = (self.game_config.target_score - 1).max(1);
                 }
+                6 => {
+                    self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
+                }
                 _ => {}
              }
         }
@@ -445,6 +579,9 @@ impl Menu {
                 },
                 5 => {
             self.game_config.target_score = (self.game_config.target_score + 1).min(99);
+                }
+                6 => {
+                    self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
                 }
                 _ => {}
              }
@@ -544,6 +681,7 @@ impl Menu {
             format!("Hole min Interval: {:.1}", self.game_config.hole_interval_min),
             format!("Hole max Interval: {:.1}", self.game_config.hole_interval_max),
             format!("Target Score: {}", self.game_config.target_score),
+            format!("Powerups: {}", if self.game_config.powerups_enabled { "ON" } else { "OFF" }),
         ];
 
 
@@ -601,6 +739,8 @@ impl Menu {
             scores: vec![0; self.configs.len()],
             round_state: RoundState::Countdown { timer: 3.0 },
             config: self.game_config.clone(),
+            powerups: vec![],
+            spawn_timer: 0.0,
         }
     }
 }
