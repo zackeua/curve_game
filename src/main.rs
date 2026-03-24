@@ -51,19 +51,19 @@ impl Player {
         vec2(self.dir.cos(), self.dir.sin())
     }
 
-    fn update(&mut self, dt: f32, turn: f32) {
+    fn update(&mut self, dt: f32, turn: f32, config: &GameConfig) {
         if !self.alive { return; }
 
-        self.dir += turn * TURN_SPEED * dt;
+        self.dir += turn * config.turn_speed * dt;
         self.hole_timer += dt;
 
-        let velocity = self.get_direction_vector() * SPEED * dt;
+        let velocity = self.get_direction_vector() * config.speed * dt;
         self.pos += velocity;
 
-        if self.in_hole && self.hole_timer > 0.3 {
+        if self.in_hole && self.hole_timer > config.hole_duration {
             self.in_hole = false;
             self.hole_timer = 0.0;
-            self.hole_cooldown = rand::gen_range(1.5, 3.0);
+            self.hole_cooldown = rand::gen_range(config.hole_interval_min, config.hole_interval_max);
             
         } else if !self.in_hole && self.hole_timer > self.hole_cooldown {
             self.in_hole = true;
@@ -72,8 +72,9 @@ impl Player {
 
         let last = self.trail.iter().rev().find_map(|&p| p);
 
+        let step_distance = TRAIL_STEP * config.speed / SPEED; // Adjust step based on speed config
         if let Some(last_pos) = last {
-            if last_pos.distance(self.pos) > TRAIL_STEP {
+            if last_pos.distance(self.pos) > step_distance {
                 if self.in_hole {
                     // Only insert one None (avoid spam)
                     if !matches!(self.trail.last(), Some(None)) {
@@ -120,12 +121,23 @@ enum RoundState {
     MatchOver { winner: Option<usize> },
 }
 
+#[derive(Clone)]
+struct GameConfig {
+    speed: f32,
+    turn_speed: f32,
+    hole_interval_min: f32,
+    hole_interval_max: f32,
+    hole_duration: f32,
+    target_score: u32,
+}
+
 struct Game {
     players: Vec<Player>,
     inputs: Vec<PlayerInput>,
     scores: Vec<u32>,
     round_state: RoundState,
-    target_score: u32,
+
+    config: GameConfig,
 }
 
 fn draw_border() {
@@ -162,7 +174,7 @@ impl Game {
                     turn += 1.0;
                 }
 
-                p.update(dt, turn);
+                p.update(dt, turn, &self.config);
             }
 
             check_collision(&mut self.players);
@@ -180,7 +192,7 @@ impl Game {
                 if let Some(w) = winner {
                     self.scores[w] += 1;
 
-                    if self.scores[w] >= self.target_score {
+                    if self.scores[w] >= self.config.target_score {
                         self.round_state = RoundState::MatchOver { winner: Some(w) };
                         return;
                     }
@@ -289,7 +301,9 @@ struct Menu {
     configs: Vec<PlayerConfig>,
     selected: usize,
     binding: BindingState,
-    target_score: u32,
+    
+    game_config: GameConfig,
+    config_selected: usize,
 }
 
 fn key_to_string(key: Option<KeyCode>) -> String {
@@ -311,7 +325,16 @@ impl Menu {
             configs: vec![],
             selected: 0,
             binding: BindingState::None,
-            target_score: 5,
+
+            game_config: GameConfig {
+                speed: SPEED,
+                turn_speed: TURN_SPEED,
+                hole_interval_min: 1.5,
+                hole_interval_max: 3.0,
+                hole_duration: 0.3,
+                target_score: 5,
+            },
+            config_selected: 0,
         }
     }
 
@@ -363,6 +386,10 @@ impl Menu {
             return;
         }
 
+        if is_key_pressed(KeyCode::U) {
+            self.config_selected = (self.config_selected + 1) % 6;
+        }
+
         // Add player
         if is_key_pressed(KeyCode::N) {
             let color = self.next_free_color();
@@ -387,13 +414,42 @@ impl Menu {
             self.binding = BindingState::Left(self.selected);
         }
 
-        if is_key_pressed(KeyCode::Left) && self.target_score > 1 {
-            self.target_score -= 1;
+        if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
+            match self.config_selected {
+                0 => self.game_config.speed = (self.game_config.speed - 10.0).max(50.0),
+                1 => self.game_config.turn_speed = (self.game_config.turn_speed - 0.5).max(1.0),
+                2 => self.game_config.hole_duration = (self.game_config.hole_duration - 0.1).max(0.1),
+                3 => {
+                    self.game_config.hole_interval_min = (self.game_config.hole_interval_min - 0.5).max(0.5);
+                },
+                4 => {
+                    self.game_config.hole_interval_max = (self.game_config.hole_interval_max - 0.5).max(self.game_config.hole_interval_min + 0.5);
+                },
+                5 => {
+                    self.game_config.target_score = (self.game_config.target_score - 1).max(1);
+                }
+                _ => {}
+             }
         }
 
-        if is_key_pressed(KeyCode::Right) && self.target_score < 99 {
-            self.target_score += 1;
+        if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
+            match self.config_selected {
+                0 => self.game_config.speed = (self.game_config.speed + 10.0).min(400.0),
+                1 => self.game_config.turn_speed = (self.game_config.turn_speed + 0.5).min(10.0),
+                2 => self.game_config.hole_duration = (self.game_config.hole_duration + 0.1).min(2.0),
+                3 => {
+                    self.game_config.hole_interval_min = (self.game_config.hole_interval_min + 0.5).min(5.0);
+                },
+                4 => {
+                    self.game_config.hole_interval_max = (self.game_config.hole_interval_max + 0.5).min(10.0);
+                },
+                5 => {
+            self.game_config.target_score = (self.game_config.target_score + 1).min(99);
+                }
+                _ => {}
+             }
         }
+
 
         // Change color
         if is_key_pressed(KeyCode::C) && !self.configs.is_empty() {
@@ -433,7 +489,6 @@ impl Menu {
         draw_text("SPACE = Bind keys", 20.0, 140.0, 25.0, WHITE);
         draw_text("C = Change color", 20.0, 170.0, 25.0, WHITE);
         draw_text("ENTER = Start", 20.0, 200.0, 25.0, WHITE);
-        draw_text(&format!("Target Score: {} (Left/Right to change)", self.target_score), 20.0, 230.0, 25.0, WHITE);
 
         for (i, p) in self.configs.iter().enumerate() {
             let y = 260.0 + i as f32 * 40.0;
@@ -480,6 +535,31 @@ impl Menu {
             }
             _ => {}
         }
+
+        let base_y = 400.0;
+        let items = [
+            format!("Speed: {:.0}", self.game_config.speed),
+            format!("Turn Speed: {:.1}", self.game_config.turn_speed),
+            format!("Hole Size: {:.1}", self.game_config.hole_duration),
+            format!("Hole min Interval: {:.1}", self.game_config.hole_interval_min),
+            format!("Hole max Interval: {:.1}", self.game_config.hole_interval_max),
+            format!("Target Score: {}", self.game_config.target_score),
+        ];
+
+
+        draw_text("GAME CONFIG", 400.0, 340.0, 30.0, WHITE);
+        draw_text("Use U to select setting, Left/Right to change", 400.0, 370.0, 20.0, WHITE);
+        for (i, text) in items.iter().enumerate() {
+            let prefix = if i == self.config_selected { ">" } else { " " };
+
+            draw_text(
+                &format!("{} {}", prefix, text),
+                400.0,
+                base_y + i as f32 * 30.0,
+                25.0,
+                WHITE,
+            );
+        }
     }
 
     fn build_game(&self) -> Game {
@@ -520,7 +600,7 @@ impl Menu {
             inputs,
             scores: vec![0; self.configs.len()],
             round_state: RoundState::Countdown { timer: 3.0 },
-            target_score: self.target_score,
+            config: self.game_config.clone(),
         }
     }
 }
