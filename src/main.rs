@@ -2,8 +2,13 @@ use macroquad::prelude::*;
 use macroquad::rand::srand;
 // ================== CONSTANTS ==================
 
+
+const UI_WIDTH: f32 = 200.0;
 const SCREEN_W: f32 = 800.0;
 const SCREEN_H: f32 = 600.0;
+
+const WINDOW_W: f32 = SCREEN_W + UI_WIDTH;
+const WINDOW_H: f32 = SCREEN_H;
 
 const SPEED: f32 = 120.0;
 const TURN_SPEED: f32 = 4.0;
@@ -169,15 +174,21 @@ impl Game {
         }
 
         // Scores
+        let panel_x = SCREEN_W + 20.0;
+        draw_rectangle(SCREEN_W, 0.0, UI_WIDTH, SCREEN_H, Color::from_rgba(30, 30, 30, 255));
+
+        draw_text("SCORES", panel_x, 40.0, 30.0, WHITE);
+
         for (i, score) in self.scores.iter().enumerate() {
             draw_text(
                 &format!("P{}: {}", i + 1, score),
-                 20.0,
-                 30.0 + i as f32 * 25.0,
+                 panel_x,
+                 80.0 + i as f32 * 30.0,
                  25.0,
                  self.players[i].color
             );
         }
+
 
         // results
         match self.round_state {
@@ -531,7 +542,16 @@ enum AppState {
     Playing(Game),
 }
 
-#[macroquad::main("Curve Fever Clone")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Curve Fever Clone".to_string(),
+        window_width: WINDOW_W as i32,
+        window_height: WINDOW_H as i32,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     srand(miniquad::date::now() as u64); // Seed random to get different maps each run
 
