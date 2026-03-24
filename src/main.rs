@@ -47,13 +47,17 @@ impl Player {
         }
     }
 
+    fn get_direction_vector(&self) -> Vec2 {
+        vec2(self.dir.cos(), self.dir.sin())
+    }
+
     fn update(&mut self, dt: f32, turn: f32) {
         if !self.alive { return; }
 
         self.dir += turn * TURN_SPEED * dt;
         self.hole_timer += dt;
 
-        let velocity = vec2(self.dir.cos(), self.dir.sin()) * SPEED * dt;
+        let velocity = self.get_direction_vector() * SPEED * dt;
         self.pos += velocity;
 
         if self.in_hole && self.hole_timer > 0.3 {
@@ -82,11 +86,22 @@ impl Player {
         }
     }
 
-    fn draw(&self) {
+    fn draw(&self, show_direction: bool) {
         for i in 1..self.trail.len() {
             if let (Some(a), Some(b)) = (self.trail[i - 1], self.trail[i]) {
                 draw_line(a.x, a.y, b.x, b.y, 3.0, self.color);
             }
+        }
+        if show_direction {
+            let dir_vec = self.get_direction_vector() * 10.0;
+            draw_line(
+                self.pos.x,
+                self.pos.y,
+                self.pos.x + dir_vec.x,
+                self.pos.y + dir_vec.y,
+                2.0,
+                YELLOW,
+            );
         }
         draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
     }
@@ -97,7 +112,9 @@ struct PlayerInput {
     right: KeyCode,
 }
 
+#[derive(PartialEq, Clone, Debug)]
 enum RoundState {
+    Countdown { timer: f32},
     Playing,
     RoundOver { winner: Option<usize> },
     MatchOver { winner: Option<usize> },
@@ -125,6 +142,15 @@ fn draw_border() {
 
 impl Game {
     fn update(&mut self, dt: f32) {
+
+        if let RoundState::Countdown { timer } = &mut self.round_state {
+            *timer -= dt;
+            if *timer <= 0.0 {
+                self.round_state = RoundState::Playing;
+            }
+            return;
+        }
+
         if let RoundState::Playing = self.round_state {
             for (p, input) in self.players.iter_mut().zip(self.inputs.iter()) {
                 let mut turn = 0.0;
@@ -141,7 +167,7 @@ impl Game {
 
             check_collision(&mut self.players);
 
-            // COunt alivbe players
+            // Count alive players
             let alive: Vec<usize> = self.players.iter()
                 .enumerate()
                 .filter(|(_, p)| p.alive)
@@ -169,8 +195,10 @@ impl Game {
     fn draw(&self) {
         draw_border();
 
+        let show_direction = matches!(self.round_state, RoundState::Countdown { .. });
+
         for p in &self.players {
-            p.draw();
+            p.draw(show_direction);
         }
 
         // Scores
@@ -231,7 +259,7 @@ impl Game {
         }
 
 
-        self.round_state = RoundState::Playing;
+        self.round_state = RoundState::Countdown { timer: 3.0 };
     }
 
     fn restart_match(&mut self) {
@@ -487,7 +515,7 @@ impl Menu {
             players,
             inputs,
             scores: vec![0; self.configs.len()],
-            round_state: RoundState::Playing,
+            round_state: RoundState::Countdown { timer: 3.0 },
             target_score: self.target_score,
         }
     }
