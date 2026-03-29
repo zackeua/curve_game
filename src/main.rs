@@ -139,6 +139,20 @@ impl Player {
         }
         draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
     }
+
+    fn reset(&mut self, pos: Vec2, dir: f32) {
+        self.pos = pos;
+        self.dir = dir;
+        self.trail.clear();
+        self.trail.push(Some(pos));
+        self.alive = true;
+        self.hole_timer = 0.0;
+        self.in_hole = false;
+        self.speed_multiplier = 1.0;
+        self.turn_multiplier = 1.0;
+        self.effect_timer = 0.0;
+        self.trail_thickness = 3.0;
+    }
 }
 
 fn apply_powerup(player_idx: usize, kind: PowerupType, players: &mut [Player], config: &mut GameConfig) {
@@ -388,18 +402,32 @@ impl Game {
         use macroquad::rand::gen_range;
 
         let margin = 50.0;
+        let min_distance = 80.0;
 
         for p in &mut self.players {
-            p.pos = vec2(
-                gen_range(margin, SCREEN_W - margin),
-                gen_range(margin, SCREEN_H - margin),
-            );
-            p.dir = gen_range(0.0, std::f32::consts::PI * 2.0);
-            p.trail.clear();
-            p.trail.push(Some(p.pos));
-            p.alive = true;
+            p.pos = Vec2::ZERO; // Mark all players as unpositioned
         }
 
+        for i in 0..self.players.len() {
+            let mut pos;
+
+            // try until we find a non-colliding position
+            loop {
+                pos = vec2(
+                    gen_range(margin, SCREEN_W - margin),
+                    gen_range(margin, SCREEN_H - margin),
+                );
+
+                if self.players.iter().all(|other| other.pos.distance(pos) > min_distance) {
+                    break;
+                }
+            }
+
+            self.players[i].reset(
+                pos,
+                gen_range(0.0, std::f32::consts::PI * 2.0)
+            );
+        }
 
         self.round_state = RoundState::Countdown { timer: 3.0 };
     }
