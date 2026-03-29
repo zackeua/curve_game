@@ -156,16 +156,16 @@ fn apply_powerup(player_idx: usize, kind: PowerupType, players: &mut [Player], c
             }
         }
         PowerupType::SlowOthers => {
-            players[player_idx].speed_multiplier = 0.5;
-            players[player_idx].effect_timer = 5.0;
-        }
-        PowerupType::SlowSelf => {
             for (i, p) in players.iter_mut().enumerate() {
                 if i != player_idx {
                     p.speed_multiplier = 0.5;
                     p.effect_timer = 5.0;
                 }
             }
+        }
+        PowerupType::SlowSelf => {
+            players[player_idx].speed_multiplier = 0.5;
+            players[player_idx].effect_timer = 5.0;
         }
         PowerupType::ThickenTrail => {
             players[player_idx].trail_thickness = 6.0;
