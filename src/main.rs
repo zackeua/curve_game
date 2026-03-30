@@ -429,6 +429,8 @@ impl Game {
             );
         }
 
+        self.powerups.clear();
+
         self.round_state = RoundState::Countdown { timer: 3.0 };
     }
 
