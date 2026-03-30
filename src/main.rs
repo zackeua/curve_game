@@ -51,6 +51,8 @@ struct Player {
     turn_multiplier: f32,
     effect_timer: f32,
     trail_thickness: f32,
+    
+    death_order: Option<usize>,
 }
 
 impl Player {
@@ -68,6 +70,7 @@ impl Player {
             turn_multiplier: 1.0,
             effect_timer: 0.0,
             trail_thickness: 3.0,
+            death_order: None,
         }
     }
 
@@ -152,6 +155,7 @@ impl Player {
         self.turn_multiplier = 1.0;
         self.effect_timer = 0.0;
         self.trail_thickness = 3.0;
+        self.death_order = None;
     }
 }
 
@@ -311,9 +315,21 @@ impl Game {
             if alive.len() <= 1 {
                 let winner = alive.first().cloned();
 
-                if let Some(w) = winner {
-                    self.scores[w] += 1;
+                // Award points based on death order
+                for (player_idx, player) in self.players.iter().enumerate() {
+                    if !player.alive && player.death_order.is_some() {
+                        // Points = number of players, minus their death order (0 = first to die gets 1 point, etc.)
+                        let rank = player.death_order.unwrap();
+                        let points: usize = rank.saturating_sub(1);
+                        self.scores[player_idx] += points as u32;
+                    } else if alive.contains(&player_idx) {
+                        // Last player alive gets max points
+                        let points = self.players.len() - 1;
+                        self.scores[player_idx] += points as u32;
+                    }
+                }
 
+                if let Some(w) = winner {
                     if self.scores[w] >= self.config.target_score {
                         self.round_state = RoundState::MatchOver { winner: Some(w) };
                         return;
@@ -492,7 +508,7 @@ impl Menu {
                 hole_interval_min: 1.5,
                 hole_interval_max: 3.0,
                 hole_duration: 0.3,
-                target_score: 5,
+                target_score: 20,
                 powerups_enabled: true,
             },
             config_selected: 0,
@@ -791,6 +807,8 @@ fn check_collision(players: &mut [Player]) {
 
         let p = players[i].pos;
         if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
+            let deaths_so_far = players.iter().filter(|pl| !pl.alive).count();
+            players[i].death_order = Some(deaths_so_far + 1);
             players[i].alive = false;
             continue;
         }
@@ -806,6 +824,8 @@ fn check_collision(players: &mut [Player]) {
 
                 if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
                     if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
+                        let deaths_so_far = players.iter().filter(|pl| !pl.alive).count();
+                        players[i].death_order = Some(deaths_so_far);
                         players[i].alive = false;
                         break;
                     }
