@@ -825,7 +825,7 @@ fn check_collision(players: &mut [Player]) {
                 if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
                     if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
                         let deaths_so_far = players.iter().filter(|pl| !pl.alive).count();
-                        players[i].death_order = Some(deaths_so_far);
+                        players[i].death_order = Some(deaths_so_far + 1);
                         players[i].alive = false;
                         break;
                     }
