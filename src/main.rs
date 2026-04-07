@@ -401,6 +401,17 @@ impl Game {
             //draw_text("Blue: Thicken Trail", panel_x, y_offset + 160.0, 20.0, BLUE);
         }
 
+        // Countdown display
+        if let RoundState::Countdown { timer } = self.round_state {
+            let countdown = (timer.ceil() as i32).max(0);
+            draw_text(
+                &countdown.to_string(),
+                SCREEN_W / 2.0 - 30.0,
+                SCREEN_H / 2.0,
+                120.0,
+                if countdown > 1 { YELLOW } else { YELLOW }
+            );
+        }
 
         // results
         match self.round_state {
