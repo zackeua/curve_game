@@ -17,6 +17,13 @@ const COLLISION_RADIUS: f32 = 3.0;
 const SELF_GRACE_POINTS: usize = 15;
 
 const COLORS: [Color; 6] = [RED, BLUE, GREEN, YELLOW, ORANGE, PINK];
+const COLOR_PALETTE: &[(f32, f32, f32); 25] = &[
+    (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0), (1.0, 0.65, 0.0),
+    (1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (1.0, 0.5, 0.5), (0.5, 1.0, 0.5), (0.5, 0.5, 1.0),
+    (1.0, 0.5, 0.0), (0.5, 1.0, 0.0), (0.0, 1.0, 0.5), (0.0, 0.5, 1.0), (1.0, 0.0, 0.5),
+    (0.8, 0.0, 0.0), (0.0, 0.0, 0.8), (0.0, 0.8, 0.0), (0.8, 0.8, 0.0), (0.8, 0.4, 0.0),
+    (0.6, 0.0, 0.6), (0.0, 0.6, 0.6), (0.6, 0.3, 0.3), (0.3, 0.6, 0.3), (0.3, 0.3, 0.6),
+];
 
 // ================== GAME CORE ==================
 
@@ -483,6 +490,8 @@ struct Menu {
     
     mouse_x: f32,
     mouse_y: f32,
+    
+    color_picker_open: Option<usize>,
 }
 
 fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
@@ -522,6 +531,7 @@ impl Menu {
             config_selected: 0,
             mouse_x: 0.0,
             mouse_y: 0.0,
+            color_picker_open: None,
         }
     }
 
@@ -551,28 +561,6 @@ impl Menu {
             && self.configs.iter().all(|p| p.left.is_some() && p.right.is_some())
     }
 
-    fn cycle_player_color(&mut self, player_idx: usize) {
-        let current_color = self.configs[player_idx].color;
-        let used: Vec<Color> = self.configs.iter()
-            .enumerate()
-            .filter(|(i, _)| *i != player_idx)
-            .map(|(_, p)| p.color)
-            .collect();
-        
-        let mut idx = COLORS.iter()
-            .position(|&c| c == current_color)
-            .unwrap_or(0);
-        
-        for _ in 0..COLORS.len() {
-            idx = (idx + 1) % COLORS.len();
-            let candidate = COLORS[idx];
-            if !used.contains(&candidate) {
-                self.configs[player_idx].color = candidate;
-                break;
-            }
-        }
-    }
-
     fn add_player(&mut self) {
         let color = self.next_free_color();
         self.configs.push(PlayerConfig {
@@ -588,6 +576,11 @@ impl Menu {
         self.mouse_x = mx;
         self.mouse_y = my;
 
+        // Handle color picker input (takes priority)
+        if self.handle_color_picker() {
+            return;
+        }
+
         // Handle key binding input (takes priority)
         if self.handle_key_binding() {
             return;
@@ -595,6 +588,35 @@ impl Menu {
 
         self.handle_player_management();
         self.handle_config_adjustment();
+    }
+
+    fn handle_color_picker(&mut self) -> bool {
+        if let Some(player_idx) = self.color_picker_open {
+            // Close color picker on Escape or clicking outside
+            if is_key_pressed(KeyCode::Escape) {
+                self.color_picker_open = None;
+                return true;
+            }
+
+            // Check for clicks on the color palette
+            for row in 0..5 {
+                for col in 0..5 {
+                    let x = 450.0 + col as f32 * 50.0;
+                    let y = 200.0 + row as f32 * 40.0;
+                    
+                    if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(x, y, 40.0, 30.0) {
+                        let idx = row * 5 + col;
+                        if idx < COLOR_PALETTE.len() {
+                            let (r, g, b) = COLOR_PALETTE[idx];
+                            self.configs[player_idx].color = Color::new(r, g, b, 1.0);
+                            self.color_picker_open = None;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        false
     }
 
     fn handle_key_binding(&mut self) -> bool {
@@ -657,10 +679,10 @@ impl Menu {
             self.binding = BindingState::Left(self.selected);
         }
 
-        // Change color
+        // Change color - open color picker
         if (is_key_pressed(KeyCode::C)) 
             || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(200.0, buttons_y, 170.0, 30.0)) {
-            self.cycle_player_color(self.selected);
+            self.color_picker_open = Some(self.selected);
         }
     }
 
@@ -765,8 +787,12 @@ impl Menu {
         // Title
         draw_text("ZACHTUNG!", 20.0, 80.0, 40.0, YELLOW);
 
-        self.draw_player_section();
-        self.draw_config_section();
+        if let Some(player_idx) = self.color_picker_open {
+            self.draw_color_picker(player_idx);
+        } else {
+            self.draw_player_section();
+            self.draw_config_section();
+        }
     }
 
     fn draw_player_section(&self) {
@@ -966,6 +992,37 @@ impl Menu {
         let right_hover = is_mouse_over(760.0, y + 5.0, 30.0, 25.0);
         draw_rectangle_lines(760.0, y + 5.0, 30.0, 25.0, 1.0, if right_hover { YELLOW } else { Color::from_rgba(60, 60, 60, 255) });
         draw_text(">", 770.0, y + 20.0, 16.0, if right_hover { YELLOW } else { WHITE });
+    }
+
+    fn draw_color_picker(&self, player_idx: usize) {
+        let title_y = 100.0;
+        draw_text(&format!("Pick color for P{}", player_idx + 1), 420.0, title_y, 24.0, YELLOW);
+        draw_text("Click color or press ESC to cancel", 420.0, title_y + 35.0, 14.0, Color::from_rgba(150, 150, 150, 255));
+
+        // Draw color palette (5x5 grid)
+        for row in 0..5 {
+            for col in 0..5 {
+                let idx = row * 5 + col;
+                if idx < COLOR_PALETTE.len() {
+                    let x = 450.0 + col as f32 * 50.0;
+                    let y = 200.0 + row as f32 * 40.0;
+                    
+                    let (r, g, b) = COLOR_PALETTE[idx];
+                    let color = Color::new(r, g, b, 1.0);
+                    let is_hovered = is_mouse_over(x, y, 40.0, 30.0);
+                    
+                    // Draw color box
+                    draw_rectangle(x, y, 40.0, 30.0, color);
+                    
+                    // Highlight on hover
+                    if is_hovered {
+                        draw_rectangle_lines(x, y, 40.0, 30.0, 3.0, YELLOW);
+                    } else {
+                        draw_rectangle_lines(x, y, 40.0, 30.0, 1.0, WHITE);
+                    }
+                }
+            }
+        }
     }
 
     fn build_game(&self) -> Game {
