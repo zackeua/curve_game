@@ -1119,13 +1119,13 @@ fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
 }
 
 fn check_collision(players: &mut [Player]) {
+    let initial_death_count = players.iter().filter(|pl| !pl.alive).count();
+    
     for i in 0..players.len() {
         if !players[i].alive { continue; }
 
         let p = players[i].pos;
         if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
-            let deaths_so_far = players.iter().filter(|pl| !pl.alive).count();
-            players[i].death_order = Some(deaths_so_far + 1);
             players[i].alive = false;
             continue;
         }
@@ -1141,8 +1141,6 @@ fn check_collision(players: &mut [Player]) {
 
                 if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
                     if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
-                        let deaths_so_far = players.iter().filter(|pl| !pl.alive).count();
-                        players[i].death_order = Some(deaths_so_far + 1);
                         players[i].alive = false;
                         break;
                     }
@@ -1150,6 +1148,14 @@ fn check_collision(players: &mut [Player]) {
             }
 
             if !players[i].alive { break; }
+        }
+    }
+    
+    // Assign death orders in a second pass to handle simultaneous deaths correctly
+    let death_order = initial_death_count + 1;
+    for player in players {
+        if !player.alive && player.death_order.is_none() {
+            player.death_order = Some(death_order);
         }
     }
 }
