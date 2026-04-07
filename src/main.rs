@@ -159,7 +159,7 @@ impl Player {
     }
 }
 
-fn apply_powerup(player_idx: usize, kind: PowerupType, players: &mut [Player], config: &mut GameConfig) {
+fn apply_powerup(player_idx: usize, kind: PowerupType, players: &mut [Player], _config: &mut GameConfig) {
     match kind {
         PowerupType::SpeedSelf => {
             players[player_idx].speed_multiplier = 1.5;
@@ -480,6 +480,14 @@ struct Menu {
     
     game_config: GameConfig,
     config_selected: usize,
+    
+    mouse_x: f32,
+    mouse_y: f32,
+}
+
+fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
+    let (mx, my) = mouse_position();
+    mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
 fn key_to_string(key: Option<KeyCode>) -> String {
@@ -512,6 +520,8 @@ impl Menu {
                 powerups_enabled: true,
             },
             config_selected: 0,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
         }
     }
 
@@ -541,9 +551,53 @@ impl Menu {
             && self.configs.iter().all(|p| p.left.is_some() && p.right.is_some())
     }
 
-    fn update(&mut self) {
+    fn cycle_player_color(&mut self, player_idx: usize) {
+        let current_color = self.configs[player_idx].color;
+        let used: Vec<Color> = self.configs.iter()
+            .enumerate()
+            .filter(|(i, _)| *i != player_idx)
+            .map(|(_, p)| p.color)
+            .collect();
+        
+        let mut idx = COLORS.iter()
+            .position(|&c| c == current_color)
+            .unwrap_or(0);
+        
+        for _ in 0..COLORS.len() {
+            idx = (idx + 1) % COLORS.len();
+            let candidate = COLORS[idx];
+            if !used.contains(&candidate) {
+                self.configs[player_idx].color = candidate;
+                break;
+            }
+        }
+    }
 
-        // Ignore input if we're currently binding keys
+    fn add_player(&mut self) {
+        let color = self.next_free_color();
+        self.configs.push(PlayerConfig {
+            left: None,
+            right: None,
+            color,
+        });
+    }
+
+    fn update(&mut self) {
+        // Update mouse position
+        let (mx, my) = mouse_position();
+        self.mouse_x = mx;
+        self.mouse_y = my;
+
+        // Handle key binding input (takes priority)
+        if self.handle_key_binding() {
+            return;
+        }
+
+        self.handle_player_management();
+        self.handle_config_adjustment();
+    }
+
+    fn handle_key_binding(&mut self) -> bool {
         if !matches!(self.binding, BindingState::None) {
             if let Some(key) = get_last_key_pressed() {
                 if !self.key_in_use(key) {
@@ -560,190 +614,358 @@ impl Menu {
                     }
                 }
             }
-            return;
+            return true;
         }
+        false
+    }
 
-        if is_key_pressed(KeyCode::U) {
-            self.config_selected = (self.config_selected + 1) % 7;
-        }
-
+    fn handle_player_management(&mut self) {
         // Add player
-        if is_key_pressed(KeyCode::N) {
-            let color = self.next_free_color();
-            self.configs.push(PlayerConfig {
-                left: None,
-                right: None,
-                color,
-            });
+        if (is_key_pressed(KeyCode::N)) 
+            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, 135.0, 120.0, 30.0)) {
+            self.add_player();
         }
 
-        // Select player
+        // Select player with keyboard
         if is_key_pressed(KeyCode::Up) && self.selected > 0 {
             self.selected -= 1;
         }
-
         if is_key_pressed(KeyCode::Down) && self.selected + 1 < self.configs.len() {
             self.selected += 1;
         }
 
-        // Start binding
-        if is_key_pressed(KeyCode::Space) && !self.configs.is_empty() {
+        // Select player with mouse
+        let list_base_y = 210.0;
+        for i in 0..self.configs.len() {
+            let y = list_base_y + i as f32 * 40.0;
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, y, 350.0, 35.0) {
+                self.selected = i;
+            }
+        }
+
+        // Skip remaining player actions if no players
+        if self.configs.is_empty() {
+            return;
+        }
+
+        let list_height = 40.0 * self.configs.len() as f32;
+        let buttons_y = 220.0 + list_height;
+        
+        // Bind keys
+        if (is_key_pressed(KeyCode::Space)) 
+            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, buttons_y, 170.0, 30.0)) {
             self.binding = BindingState::Left(self.selected);
         }
 
-        if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
-            match self.config_selected {
-                0 => self.game_config.speed = (self.game_config.speed - 10.0).max(50.0),
-                1 => self.game_config.turn_speed = (self.game_config.turn_speed - 0.5).max(1.0),
-                2 => self.game_config.hole_duration = (self.game_config.hole_duration - 0.1).max(0.1),
-                3 => {
-                    self.game_config.hole_interval_min = (self.game_config.hole_interval_min - 0.5).max(0.5);
-                },
-                4 => {
-                    self.game_config.hole_interval_max = (self.game_config.hole_interval_max - 0.5).max(self.game_config.hole_interval_min + 0.5);
-                },
-                5 => {
-                    self.game_config.target_score = (self.game_config.target_score - 1).max(1);
-                }
-                6 => {
-                    self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
-                }
-                _ => {}
-             }
-        }
-
-        if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
-            match self.config_selected {
-                0 => self.game_config.speed = (self.game_config.speed + 10.0).min(400.0),
-                1 => self.game_config.turn_speed = (self.game_config.turn_speed + 0.5).min(10.0),
-                2 => self.game_config.hole_duration = (self.game_config.hole_duration + 0.1).min(2.0),
-                3 => {
-                    self.game_config.hole_interval_min = (self.game_config.hole_interval_min + 0.5).min(5.0);
-                },
-                4 => {
-                    self.game_config.hole_interval_max = (self.game_config.hole_interval_max + 0.5).min(10.0);
-                },
-                5 => {
-            self.game_config.target_score = (self.game_config.target_score + 1).min(99);
-                }
-                6 => {
-                    self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
-                }
-                _ => {}
-             }
-        }
-
-
         // Change color
-        if is_key_pressed(KeyCode::C) && !self.configs.is_empty() {
-            let selected = self.selected;
-
-    let current_color = self.configs[selected].color;
-
-    // Colors used by OTHER players
-    let used: Vec<Color> = self.configs.iter()
-        .enumerate()
-        .filter(|(i, _)| *i != selected)
-        .map(|(_, p)| p.color)
-        .collect();
-
-    // Find current index in color list
-    let mut idx = COLORS.iter()
-        .position(|&c| c == current_color)
-        .unwrap_or(0);
-
-    // Try next colors (wrap around)
-    for _ in 0..COLORS.len() {
-        idx = (idx + 1) % COLORS.len();
-        let candidate = COLORS[idx];
-
-        if !used.contains(&candidate) {
-            self.configs[selected].color = candidate;
-            break;
+        if (is_key_pressed(KeyCode::C)) 
+            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(200.0, buttons_y, 170.0, 30.0)) {
+            self.cycle_player_color(self.selected);
         }
     }
+
+    fn handle_config_adjustment(&mut self) {
+        // Keyboard: cycle through config items
+        if is_key_pressed(KeyCode::U) {
+            self.config_selected = (self.config_selected + 1) % 7;
+        }
+
+        // Keyboard: adjust selected config
+        if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
+            self.adjust_config_left();
+        }
+        if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
+            self.adjust_config_right();
+        }
+
+        // Mouse: interact with config items
+        // section_y = 100.0, base_y = 170.0, each item is 50 units apart
+        let base_y = 170.0;
+        for i in 0..7 {
+            let y = base_y + (i as f32 * 50.0);
+            
+            // Click on config item to select it
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 410.0, 35.0) {
+                self.config_selected = i;
+            }
+            
+            // Click left arrow to decrease
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(410.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score > 1 {
+                self.config_selected = i;
+                self.adjust_config_left();
+            }
+            
+            // Click right arrow to increase
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(760.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score < 99 {
+                self.config_selected = i;
+                self.adjust_config_right();
+            }
+        }
+    }
+
+    fn should_start_game(&self) -> bool {
+        // Calculate start button position (matches draw_config_section)
+        let base_y = 170.0; // section_y (100.0) + 70.0
+        let start_y = base_y + 360.0;
+        let start_x = 400.0;
+        
+        is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(start_x, start_y, 180.0, 40.0)
+    }
+
+    fn adjust_config_left(&mut self) {
+        match self.config_selected {
+            0 => self.game_config.speed = (self.game_config.speed - 10.0).max(50.0),
+            1 => self.game_config.turn_speed = (self.game_config.turn_speed - 0.5).max(1.0),
+            2 => self.game_config.hole_duration = (self.game_config.hole_duration - 0.1).max(0.1),
+            3 => {
+                self.game_config.hole_interval_min = (self.game_config.hole_interval_min - 0.5).max(0.5);
+            },
+            4 => {
+                self.game_config.hole_interval_max = (self.game_config.hole_interval_max - 0.5).max(self.game_config.hole_interval_min + 0.5);
+            },
+            5 => {
+                self.game_config.target_score = (self.game_config.target_score - 1).max(1);
+            }
+            6 => {
+                self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
+            }
+            _ => {}
+        }
+    }
+
+    fn adjust_config_right(&mut self) {
+        match self.config_selected {
+            0 => self.game_config.speed = (self.game_config.speed + 10.0).min(400.0),
+            1 => self.game_config.turn_speed = (self.game_config.turn_speed + 0.5).min(10.0),
+            2 => self.game_config.hole_duration = (self.game_config.hole_duration + 0.1).min(2.0),
+            3 => {
+                self.game_config.hole_interval_min = (self.game_config.hole_interval_min + 0.5).min(5.0);
+            },
+            4 => {
+                self.game_config.hole_interval_max = (self.game_config.hole_interval_max + 0.5).min(10.0);
+            },
+            5 => {
+                self.game_config.target_score = (self.game_config.target_score + 1).min(99);
+            }
+            6 => {
+                self.game_config.powerups_enabled = !self.game_config.powerups_enabled;
+            }
+            _ => {}
         }
     }
 
     fn draw(&self) {
-        draw_text("MENU", 20.0, 40.0, 40.0, WHITE);
-        draw_text("N = Add player", 20.0, 80.0, 25.0, WHITE);
-        draw_text("up/down = Select player", 20.0, 110.0, 25.0, WHITE);
-        draw_text("SPACE = Bind keys", 20.0, 140.0, 25.0, WHITE);
-        draw_text("C = Change color", 20.0, 170.0, 25.0, WHITE);
-        draw_text("ENTER = Start", 20.0, 200.0, 25.0, WHITE);
+        // Background panels
+        draw_rectangle(10.0, 50.0, 370.0, 530.0, Color::from_rgba(20, 20, 20, 255));
+        draw_rectangle_lines(10.0, 50.0, 370.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
+        
+        draw_rectangle(390.0, 50.0, 410.0, 530.0, Color::from_rgba(20, 20, 20, 255));
+        draw_rectangle_lines(390.0, 50.0, 410.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
 
+        // Title
+        draw_text("ZACHTUNG!", 20.0, 80.0, 40.0, YELLOW);
+
+        self.draw_player_section();
+        self.draw_config_section();
+    }
+
+    fn draw_player_section(&self) {
+        let section_x = 20.0;
+        let section_y = 100.0;
+        
+        // Section header
+        draw_text("PLAYERS", section_x, section_y, 28.0, WHITE);
+        draw_line(section_x, section_y + 10.0, section_x + 150.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
+        
+        // Add player button
+        let add_btn_hover = is_mouse_over(section_x, section_y + 35.0, 120.0, 30.0);
+        let btn_color = if add_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
+        draw_rectangle_lines(section_x, section_y + 35.0, 120.0, 30.0, 2.0, btn_color);
+        draw_text(
+            "[N] Add Player",
+            section_x + 10.0,
+            section_y + 55.0,
+            18.0,
+            btn_color
+        );
+
+        // Player list header
+        draw_text("Select Player (↑↓):", section_x, section_y + 85.0, 18.0, WHITE);
+
+        // Player list
         for (i, p) in self.configs.iter().enumerate() {
-            let y = 260.0 + i as f32 * 40.0;
+            self.draw_player_item(i, p, section_y + 110.0);
+        }
 
-
-            let is_selected = i == self.selected;
-            let prefix = if is_selected { ">" } else { " " };
-            let suffix = if is_selected { "<" } else { " " };
-
+        if !self.configs.is_empty() {
+            let list_height = 40.0 * self.configs.len() as f32;
+            let buttons_y = section_y + 120.0 + list_height;
+            
+            // Bind keys button
+            let bind_btn_hover = is_mouse_over(section_x, buttons_y, 170.0, 30.0);
+            let btn_color = if bind_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
+            draw_rectangle_lines(section_x, buttons_y, 170.0, 30.0, 2.0, btn_color);
             draw_text(
-                &format!(
-                    "{} P{} | Left: {} Right: {} {}",
-                    prefix,
-                    i + 1,
-                    key_to_string(p.left),
-                    key_to_string(p.right),
-                    suffix
-                ),
-                20.0,
-                y,
-                25.0,
-                p.color,
+                "[SPACE] Bind Keys",
+                section_x + 10.0,
+                buttons_y + 20.0,
+                16.0,
+                btn_color
+            );
+
+            // Change color button
+            let color_btn_hover = is_mouse_over(section_x + 180.0, buttons_y, 170.0, 30.0);
+            let btn_color = if color_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
+            draw_rectangle_lines(section_x + 180.0, buttons_y, 170.0, 30.0, 2.0, btn_color);
+            draw_text(
+                "[C] Change Color",
+                section_x + 190.0,
+                buttons_y + 20.0,
+                16.0,
+                btn_color
             );
         }
 
+        // Key binding prompt
         match self.binding {
             BindingState::Left(i) => {
+                draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
                 draw_text(
-                    &format!("Player {}: press LEFT key", i + 1),
+                    &format!("P{}: Press LEFT key", i + 1),
+                    section_x + 10.0,
+                    545.0,
                     20.0,
-                    550.0,
-                    30.0,
                     YELLOW,
                 );
             }
             BindingState::Right(i) => {
+                draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
                 draw_text(
-                    &format!("Player {}: press RIGHT key", i + 1),
+                    &format!("P{}: Press RIGHT key", i + 1),
+                    section_x + 10.0,
+                    545.0,
                     20.0,
-                    550.0,
-                    30.0,
                     YELLOW,
                 );
             }
             _ => {}
         }
+    }
 
-        let base_y = 400.0;
+    fn draw_player_item(&self, index: usize, config: &PlayerConfig, base_y: f32) {
+        let y = base_y + index as f32 * 40.0;
+        let is_selected = index == self.selected;
+        let is_hovered = is_mouse_over(20.0, y, 350.0, 35.0);
+        
+        // Background
+        if is_hovered || is_selected {
+            let bg_color = if is_selected {
+                Color::from_rgba(50, 50, 100, 255)
+            } else {
+                Color::from_rgba(40, 40, 40, 255)
+            };
+            draw_rectangle(20.0, y - 2.0, 350.0, 35.0, bg_color);
+        }
+
+        let prefix = if is_selected { "> " } else { "  " };
+        let text_color = if is_selected { YELLOW } else { config.color };
+        
+        draw_text(
+            &format!(
+                "{}P{} | L:{} R:{} [{}]",
+                prefix,
+                index + 1,
+                key_to_string(config.left),
+                key_to_string(config.right),
+                "●"
+            ),
+            30.0,
+            y + 20.0,
+            18.0,
+            text_color,
+        );
+        
+        // Color indicator circle
+        draw_circle(340.0, y + 13.0, 6.0, config.color);
+    }
+
+    fn draw_config_section(&self) {
+        let section_x = 400.0;
+        let section_y = 100.0;
+        
+        // Section header
+        draw_text("GAME CONFIG", section_x, section_y, 28.0, WHITE);
+        draw_line(section_x, section_y + 10.0, section_x + 200.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
+        
+        draw_text("Click setting or use ↑↓↑↑ to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
+        
         let items = [
             format!("Speed: {:.0}", self.game_config.speed),
             format!("Turn Speed: {:.1}", self.game_config.turn_speed),
             format!("Hole Size: {:.1}", self.game_config.hole_duration),
-            format!("Hole min Interval: {:.1}", self.game_config.hole_interval_min),
-            format!("Hole max Interval: {:.1}", self.game_config.hole_interval_max),
+            format!("Hole min: {:.1}", self.game_config.hole_interval_min),
+            format!("Hole max: {:.1}", self.game_config.hole_interval_max),
             format!("Target Score: {}", self.game_config.target_score),
             format!("Powerups: {}", if self.game_config.powerups_enabled { "ON" } else { "OFF" }),
         ];
 
-
-        draw_text("GAME CONFIG", 400.0, 340.0, 30.0, WHITE);
-        draw_text("Use U to select setting, Left/Right to change", 400.0, 370.0, 20.0, WHITE);
+        let base_y = section_y + 70.0;
         for (i, text) in items.iter().enumerate() {
-            let prefix = if i == self.config_selected { ">" } else { " " };
-
-            draw_text(
-                &format!("{} {}", prefix, text),
-                400.0,
-                base_y + i as f32 * 30.0,
-                25.0,
-                WHITE,
-            );
+            self.draw_config_item(i, text, base_y + i as f32 * 50.0);
         }
+
+        // Start button at the bottom
+        let start_y = base_y + 360.0;
+        let start_hover = is_mouse_over(section_x, start_y, 180.0, 40.0);
+        let btn_color = if start_hover || !self.is_ready() { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
+        let btn_bg = if !self.is_ready() { Color::from_rgba(100, 50, 50, 255) } else { Color::from_rgba(50, 100, 50, 255) };
+        
+        draw_rectangle(section_x, start_y, 180.0, 40.0, btn_bg);
+        draw_rectangle_lines(section_x, start_y, 180.0, 40.0, 2.0, btn_color);
+        draw_text(
+            "[ENTER] Start",
+            section_x + 20.0,
+            start_y + 27.0,
+            18.0,
+            btn_color
+        );
+    }
+
+    fn draw_config_item(&self, index: usize, text: &str, y: f32) {
+        let is_selected = index == self.config_selected;
+        let is_hovered = is_mouse_over(400.0, y, 410.0, 35.0);
+        
+        // Background
+        if is_hovered || is_selected {
+            let bg_color = if is_selected {
+                Color::from_rgba(50, 50, 100, 255)
+            } else {
+                Color::from_rgba(40, 40, 40, 255)
+            };
+            draw_rectangle(400.0, y - 2.0, 410.0, 35.0, bg_color);
+        }
+
+        let prefix = if is_selected { "> " } else { "  " };
+        let text_color = if is_selected { YELLOW } else { WHITE };
+        
+        // Draw left arrow button
+        let left_hover = is_mouse_over(410.0, y + 5.0, 30.0, 25.0);
+        draw_rectangle_lines(410.0, y + 5.0, 30.0, 25.0, 1.0, if left_hover { YELLOW } else { Color::from_rgba(60, 60, 60, 255) });
+        draw_text("<", 420.0, y + 20.0, 16.0, if left_hover { YELLOW } else { WHITE });
+        
+        // Main text in the middle
+        draw_text(
+            &format!("{}{}", prefix, text),
+            450.0,
+            y + 20.0,
+            18.0,
+            text_color,
+        );
+        
+        // Draw right arrow button
+        let right_hover = is_mouse_over(760.0, y + 5.0, 30.0, 25.0);
+        draw_rectangle_lines(760.0, y + 5.0, 30.0, 25.0, 1.0, if right_hover { YELLOW } else { Color::from_rgba(60, 60, 60, 255) });
+        draw_text(">", 770.0, y + 20.0, 16.0, if right_hover { YELLOW } else { WHITE });
     }
 
     fn build_game(&self) -> Game {
@@ -868,7 +1090,7 @@ async fn main() {
                 menu.update();
                 menu.draw();
 
-                if is_key_pressed(KeyCode::Enter) && menu.is_ready() {
+                if (is_key_pressed(KeyCode::Enter) || menu.should_start_game()) && menu.is_ready() {
                     state = AppState::Playing(menu.build_game());
                 }
             }
