@@ -152,7 +152,30 @@ impl Player {
                 YELLOW,
             );
         }
+        
         draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
+        
+        // Draw powerup effect duration indicator as arc beneath head
+        if self.effect_timer > 0.0 {
+            let max_duration = 5.0;
+            let progress = (self.effect_timer / max_duration).clamp(0.0, 1.0);
+            let arc_radius = 5.0;
+            let num_segments = 30;
+            let filled_segments = ((num_segments as f32) * progress).ceil() as i32;
+            
+            // Draw arc starting from top, going clockwise
+            for i in 0..=filled_segments {
+                let angle1 = -std::f32::consts::PI / 2.0 + (i as f32 / num_segments as f32) * std::f32::consts::PI * 2.0;
+                let angle2 = -std::f32::consts::PI / 2.0 + ((i as f32 + 1.0) / num_segments as f32) * std::f32::consts::PI * 2.0;
+                
+                let x1 = self.pos.x + arc_radius * angle1.cos();
+                let y1 = self.pos.y + arc_radius * angle1.sin();
+                let x2 = self.pos.x + arc_radius * angle2.cos();
+                let y2 = self.pos.y + arc_radius * angle2.sin();
+                
+                draw_line(x1, y1, x2, y2, 2.0, WHITE);
+            }
+        }
     }
 
     fn reset(&mut self, pos: Vec2, dir: f32) {
