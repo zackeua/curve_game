@@ -685,7 +685,7 @@ impl Menu {
             let y = base_y + (i as f32 * 50.0);
             
             // Click on config item to select it
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 410.0, 35.0) {
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 400.0, 35.0) {
                 self.config_selected = i;
             }
             
@@ -759,8 +759,8 @@ impl Menu {
         draw_rectangle(10.0, 50.0, 370.0, 530.0, Color::from_rgba(20, 20, 20, 255));
         draw_rectangle_lines(10.0, 50.0, 370.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
         
-        draw_rectangle(390.0, 50.0, 410.0, 530.0, Color::from_rgba(20, 20, 20, 255));
-        draw_rectangle_lines(390.0, 50.0, 410.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
+        draw_rectangle(390.0, 50.0, 420.0, 530.0, Color::from_rgba(20, 20, 20, 255));
+        draw_rectangle_lines(390.0, 50.0, 420.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
 
         // Title
         draw_text("ZACHTUNG!", 20.0, 80.0, 40.0, YELLOW);
@@ -897,7 +897,7 @@ impl Menu {
         draw_text("GAME CONFIG", section_x, section_y, 28.0, WHITE);
         draw_line(section_x, section_y + 10.0, section_x + 200.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
         
-        draw_text("Click setting or use ↑↓↑↑ to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
+        draw_text("Click setting or use (UP/DOWN) to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
         
         let items = [
             format!("Speed: {:.0}", self.game_config.speed),
@@ -933,7 +933,7 @@ impl Menu {
 
     fn draw_config_item(&self, index: usize, text: &str, y: f32) {
         let is_selected = index == self.config_selected;
-        let is_hovered = is_mouse_over(400.0, y, 410.0, 35.0);
+        let is_hovered = is_mouse_over(400.0, y, 400.0, 35.0);
         
         // Background
         if is_hovered || is_selected {
@@ -942,7 +942,7 @@ impl Menu {
             } else {
                 Color::from_rgba(40, 40, 40, 255)
             };
-            draw_rectangle(400.0, y - 2.0, 410.0, 35.0, bg_color);
+            draw_rectangle(400.0, y - 2.0, 400.0, 35.0, bg_color);
         }
 
         let prefix = if is_selected { "> " } else { "  " };
