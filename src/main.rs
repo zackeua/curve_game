@@ -897,7 +897,7 @@ impl Menu {
         draw_text("GAME CONFIG", section_x, section_y, 28.0, WHITE);
         draw_line(section_x, section_y + 10.0, section_x + 200.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
         
-        draw_text("Click setting or use (UP/DOWN) to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
+        draw_text("Click setting or use (U) to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
         
         let items = [
             format!("Speed: {:.0}", self.game_config.speed),
