@@ -406,7 +406,7 @@ impl Game {
 
         for (i, score) in self.scores.iter().enumerate() {
             draw_text(
-                &format!("P{}: {}", i + 1, score),
+                &format!("P{}: {}", i, score),
                  panel_x,
                  80.0 + i as f32 * 30.0,
                  25.0,
@@ -440,7 +440,7 @@ impl Game {
         match self.round_state {
             RoundState::RoundOver { winner } =>{
                 let text = match winner {
-                    Some(i) => format!("Player {} wins! Press SPACE to continue", i + 1),
+                    Some(i) => format!("Player {} wins! Press SPACE to continue", i),
                     None => "It's a tie! Press SPACE to continue".to_string(),
                 };
 
@@ -448,7 +448,7 @@ impl Game {
             },
             RoundState::MatchOver { winner } => {
                 let text = match winner {
-                    Some(i) => format!("Player {} wins the match!", i + 1),
+                    Some(i) => format!("Player {} wins the match!", i),
                     None => "It's a tie! Press SPACE to restart".to_string(),
                 };
 
@@ -896,7 +896,7 @@ impl Menu {
             BindingState::Left(i) => {
                 draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
                 draw_text(
-                    &format!("P{}: Press LEFT key", i + 1),
+                    &format!("P{}: Press LEFT key", i),
                     section_x + 10.0,
                     545.0,
                     20.0,
@@ -906,7 +906,7 @@ impl Menu {
             BindingState::Right(i) => {
                 draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
                 draw_text(
-                    &format!("P{}: Press RIGHT key", i + 1),
+                    &format!("P{}: Press RIGHT key", i),
                     section_x + 10.0,
                     545.0,
                     20.0,
@@ -939,7 +939,7 @@ impl Menu {
             &format!(
                 "{}P{} | L:{} R:{}",
                 prefix,
-                index + 1,
+                index,
                 key_to_string(config.left),
                 key_to_string(config.right)
             ),
@@ -1034,7 +1034,7 @@ impl Menu {
 
     fn draw_color_picker(&self, player_idx: usize) {
         let title_y = 100.0;
-        draw_text(&format!("Pick color for P{}", player_idx + 1), 420.0, title_y, 24.0, YELLOW);
+        draw_text(&format!("Pick color for P{}", player_idx), 420.0, title_y, 24.0, YELLOW);
         draw_text("Click color or press ESC to cancel", 420.0, title_y + 35.0, 14.0, Color::from_rgba(150, 150, 150, 255));
 
         // Draw color palette (5x5 grid)
