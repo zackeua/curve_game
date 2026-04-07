@@ -790,7 +790,7 @@ impl Menu {
         );
 
         // Player list header
-        draw_text("Select Player (↑↓):", section_x, section_y + 85.0, 18.0, WHITE);
+        draw_text("Select Player (UP/DOWN):", section_x, section_y + 85.0, 18.0, WHITE);
 
         // Player list
         for (i, p) in self.configs.iter().enumerate() {
@@ -868,7 +868,7 @@ impl Menu {
         }
 
         let prefix = if is_selected { "> " } else { "  " };
-        let text_color = if is_selected { YELLOW } else { config.color };
+        let text_color = config.color;
         
         draw_text(
             &format!(
