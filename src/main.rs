@@ -364,11 +364,18 @@ impl Game {
                     }
                 }
 
-                if let Some(w) = winner {
-                    if self.scores[w] >= self.config.target_score {
-                        self.round_state = RoundState::MatchOver { winner: Some(w) };
-                        return;
+                // Check if any player has reached the target score
+                let mut match_winner = None;
+                for (i, &score) in self.scores.iter().enumerate() {
+                    if score >= self.config.target_score {
+                        match_winner = Some(i);
+                        break;
                     }
+                }
+
+                if let Some(w) = match_winner {
+                    self.round_state = RoundState::MatchOver { winner: Some(w) };
+                    return;
                 }
 
                 self.round_state = RoundState::RoundOver { winner };
