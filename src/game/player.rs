@@ -19,10 +19,20 @@ pub struct Player {
 
 impl Player {
     pub fn new(pos: Vec2, dir: f32) -> Self {
+        
+        let mut trail = Vec::new();
+        // Create initial tail extending backwards
+        let dir_vec = vec2(dir.cos(), dir.sin());
+        for j in 1..=3 {
+            let trail_pos = pos - dir_vec * (TRAIL_STEP * j as f32);
+            trail.insert(0, Some(trail_pos)); // Insert at the beginning to maintain order
+        }
+        trail.push(Some(pos)); // Add current position at the end of the trail
+
         Self {
             pos,
             dir,
-            trail: vec![Some(pos)],
+            trail,
             hole_timer: 0.0,
             hole_cooldown: macroquad::rand::gen_range(1.5, 3.0),
             in_hole: false,
@@ -81,10 +91,17 @@ impl Player {
     }
 
     pub fn reset(&mut self, pos: Vec2, dir: f32) {
+        use crate::config::TRAIL_STEP;
+        
         self.pos = pos;
         self.dir = dir;
-        self.trail.clear();
-        self.trail.push(Some(pos));
+        self.trail.clear();        
+        // Create initial tail extending backwards
+        let dir_vec = vec2(dir.cos(), dir.sin());
+        for j in 1..=3 {
+            let trail_pos = pos - dir_vec * (TRAIL_STEP * j as f32);
+            self.trail.insert(0, Some(trail_pos)); // Insert at the beginning to maintain order
+        }
         self.hole_timer = 0.0;
         self.in_hole = false;
         self.speed_multiplier = 1.0;

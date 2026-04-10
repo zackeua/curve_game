@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, GameConfig};
+use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, TRAIL_STEP, GameConfig};
 use super::player::Player;
 use super::powerup::{Powerup, PowerupType, apply_powerup};
 
@@ -170,24 +170,13 @@ impl Game {
         }
     }
 
-    fn draw_player(&self, player_idx: usize, show_direction: bool) {
+    fn draw_player(&self, player_idx: usize) {
         let player = &self.players[player_idx];
         let color = self.colors[player_idx];
         for i in 1..player.trail.len() {
             if let (Some(a), Some(b)) = (player.trail[i - 1], player.trail[i]) {
                 draw_line(a.x, a.y, b.x, b.y, player.trail_thickness, color);
             }
-        }
-        if show_direction {
-            let dir_vec = player.get_direction_vector() * 10.0;
-            draw_line(
-                player.pos.x,
-                player.pos.y,
-                player.pos.x + dir_vec.x,
-                player.pos.y + dir_vec.y,
-                2.0,
-                YELLOW,
-            );
         }
 
         draw_circle(player.pos.x, player.pos.y, 4.0, color);
@@ -220,10 +209,8 @@ impl Game {
     pub fn draw(&self) {
         draw_border();
 
-        let show_direction = matches!(self.round_state, RoundState::Countdown { .. });
-
         for player_idx in 0..self.players.len() {
-            self.draw_player(player_idx, show_direction);
+            self.draw_player(player_idx);
         }
         // Powerups
         for p in &self.powerups {
@@ -353,7 +340,8 @@ impl Game {
                 }
             }
 
-            self.players[i].reset(pos, gen_range(0.0, std::f32::consts::PI * 2.0));
+            let dir = gen_range(0.0, std::f32::consts::PI * 2.0);
+            self.players[i].reset(pos, dir);
         }
 
         self.powerups.clear();
