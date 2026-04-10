@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 use macroquad::rand::srand;
 
 use crate::config::{WINDOW_W, WINDOW_H};
-use crate::game::{Game, RoundState};
+use crate::game::{Game, RoundEndAction};
 use crate::menu::Menu;
 
 mod config;
@@ -48,23 +48,9 @@ async fn main() {
                 game.update(dt);
                 game.draw();
 
-
-                match game.round_state {
-                    RoundState::RoundOver { .. } => {
-                        if is_key_pressed(KeyCode::Space) {
-                            game.restart_round();
-                        }
-                    }
-                    RoundState::MatchOver { .. } => {
-                        if is_key_pressed(KeyCode::R) {
-                            game.restart_match();
-                        }
-
-                        if is_key_pressed(KeyCode::Enter) {
-                            state = AppState::Menu(Menu::new());
-                        }
-                    }
-                    _ => {}
+                let action = game.handle_round_end_input();
+                if action == RoundEndAction::ReturnToMenu {
+                    state = AppState::Menu(Menu::new());
                 }
                 
                 if is_key_pressed(KeyCode::Escape) {

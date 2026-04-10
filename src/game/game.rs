@@ -16,7 +16,13 @@ pub enum RoundState {
     RoundOver { winner: Option<usize> },
     MatchOver { winner: Option<usize> },
 }
-
+#[derive(PartialEq, Clone, Debug)]
+pub enum RoundEndAction {
+    ContinuePlaying,
+    RestartRound,
+    RestartMatch,
+    ReturnToMenu,
+}
 pub struct Game {
     pub players: Vec<Player>,
     pub inputs: Vec<PlayerInput>,
@@ -360,6 +366,30 @@ impl Game {
         self.scores = vec![0; self.players.len()];
         self.death_orders = vec![None; self.players.len()];
         self.restart_round();
+    }
+
+    pub fn handle_round_end_input(&mut self) -> RoundEndAction {
+        match self.round_state {
+            RoundState::RoundOver { .. } => {
+                if is_key_pressed(KeyCode::Space) {
+                    self.restart_round();
+                    RoundEndAction::RestartRound
+                } else {
+                    RoundEndAction::ContinuePlaying
+                }
+            }
+            RoundState::MatchOver { .. } => {
+                if is_key_pressed(KeyCode::R) {
+                    self.restart_match();
+                    RoundEndAction::RestartMatch
+                } else if is_key_pressed(KeyCode::Enter) {
+                    RoundEndAction::ReturnToMenu
+                } else {
+                    RoundEndAction::ContinuePlaying
+                }
+            }
+            _ => RoundEndAction::ContinuePlaying,
+        }
     }
 
     pub fn check_collision(&mut self) {
