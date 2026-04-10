@@ -1,11 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::SCREEN_W;
-use crate::SCREEN_H;
-use crate::UI_WIDTH;
-use crate::COLLISION_RADIUS;
-use crate::SELF_GRACE_POINTS;
-use super::super::GameConfig;
+use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, GameConfig};
 use super::player::Player;
 use super::powerup::{Powerup, PowerupType, apply_powerup};
 

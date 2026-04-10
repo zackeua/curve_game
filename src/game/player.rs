@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use crate::config::GameConfig;
 
 #[derive(Clone)]
 pub struct Player {
@@ -36,7 +37,7 @@ impl Player {
         vec2(self.dir.cos(), self.dir.sin())
     }
 
-    pub fn update(&mut self, dt: f32, turn: f32, config: &crate::GameConfig) {
+    pub fn update(&mut self, dt: f32, turn: f32, config: &GameConfig) {
         const TRAIL_STEP: f32 = 5.0;
         const SPEED: f32 = 120.0;
 

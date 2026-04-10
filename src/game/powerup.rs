@@ -1,6 +1,6 @@
 use macroquad::prelude::Vec2;
 use super::player::Player;
-use crate::GameConfig;
+use crate::config::GameConfig;
 
 #[derive(Clone, Copy)]
 pub enum PowerupType {
