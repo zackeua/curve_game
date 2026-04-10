@@ -1,5 +1,10 @@
 use macroquad::prelude::*;
 use macroquad::rand::srand;
+
+
+use crate::game::{Powerup, PowerupType};
+
+mod game;
 // ================== CONSTANTS ==================
 
 
@@ -31,21 +36,6 @@ const COLOR_PALETTE: &[(f32, f32, f32); 25] = &[
 ];
 
 // ================== GAME CORE ==================
-
-#[derive(Clone, Copy)]
-enum PowerupType {
-    SpeedSelf,
-    SpeedOthers,
-    SlowSelf,
-    SlowOthers,
-    ThickenTrail,
-}
-
-struct  Powerup {
-    pos: Vec2,
-    kind: PowerupType,
-}
-
 
 #[derive(Clone)]
 struct Player {
@@ -283,7 +273,7 @@ impl Game {
                 p.update(dt, turn, &self.config);
             }
 
-            check_collision(&mut self.players, &mut self.death_orders);
+            self.check_collision();
 
             for i in 0..self.players.len() {
                 if !self.is_player_alive(i) { continue; }
@@ -510,6 +500,38 @@ impl Game {
         self.scores = vec![0; self.players.len()];
         self.death_orders = vec![None; self.players.len()];
         self.restart_round();
+    }
+
+    fn check_collision(&mut self) {
+        for i in 0..self.players.len() {
+            if self.death_orders[i].is_some() { continue; }
+
+            let p = self.players[i].pos;
+            if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
+                self.kill_player(i);
+                continue;
+            }
+
+            for j in 0..self.players.len() {
+                let trail = &self.players[j].trail;
+                let len = trail.len();
+
+                for k in 1..len {
+                    if i == j && k > len.saturating_sub(SELF_GRACE_POINTS) {
+                        continue;
+                    }
+
+                    if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
+                        if distance_to_segment(self.players[i].pos, a, b) < COLLISION_RADIUS {
+                            self.kill_player(i);
+                            break;
+                        }
+                    }
+                }
+
+                if self.death_orders[i].is_some() { break; }
+            }
+        }
     }
 
 }
@@ -1130,40 +1152,6 @@ fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
     let closest = a + ab * t;
     p.distance(closest)
-}
-
-fn check_collision(players: &mut [Player], death_orders: &mut [Option<usize>]) {    
-    for i in 0..players.len() {
-        if death_orders[i].is_some() { continue; }
-
-        let p = players[i].pos;
-        if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
-            let death_count = death_orders.iter().filter(|d| d.is_some()).count();
-            death_orders[i] = Some(death_count + 1);
-            continue;
-        }
-
-        for j in 0..players.len() {
-            let trail = &players[j].trail;
-            let len = trail.len();
-
-            for k in 1..len {
-                if i == j && k > len.saturating_sub(SELF_GRACE_POINTS) {
-                    continue;
-                }
-
-                if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
-                    if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
-                        let death_count = death_orders.iter().filter(|d| d.is_some()).count();
-                        death_orders[i] = Some(death_count + 1);
-                        break;
-                    }
-                }
-            }
-
-            if death_orders[i].is_some() { break; }
-        }
-    }
 }
 
 // ================== APP ==================
