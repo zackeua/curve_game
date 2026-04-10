@@ -51,7 +51,6 @@ struct  Powerup {
 struct Player {
     pos: Vec2,
     dir: f32,
-    color: Color,
     alive: bool,
     trail: Vec<Option<Vec2>>,
 
@@ -68,11 +67,10 @@ struct Player {
 }
 
 impl Player {
-    fn new(pos: Vec2, dir: f32, color: Color) -> Self {
+    fn new(pos: Vec2, dir: f32) -> Self {
         Self {
             pos,
             dir,
-            color,
             alive: true,
             trail: vec![Some(pos)],
             hole_timer: 0.0,
@@ -131,49 +129,6 @@ impl Player {
                 self.speed_multiplier = 1.0;
                 self.turn_multiplier = 1.0;
                 self.trail_thickness = 3.0;
-            }
-        }
-    }
-
-    fn draw(&self, show_direction: bool) {
-        for i in 1..self.trail.len() {
-            if let (Some(a), Some(b)) = (self.trail[i - 1], self.trail[i]) {
-                draw_line(a.x, a.y, b.x, b.y, self.trail_thickness, self.color);
-            }
-        }
-        if show_direction {
-            let dir_vec = self.get_direction_vector() * 10.0;
-            draw_line(
-                self.pos.x,
-                self.pos.y,
-                self.pos.x + dir_vec.x,
-                self.pos.y + dir_vec.y,
-                2.0,
-                YELLOW,
-            );
-        }
-        
-        draw_circle(self.pos.x, self.pos.y, 4.0, self.color);
-        
-        // Draw powerup effect duration indicator as arc beneath head
-        if self.effect_timer > 0.0 {
-            let max_duration = 5.0;
-            let progress = (self.effect_timer / max_duration).clamp(0.0, 1.0);
-            let arc_radius = 5.0;
-            let num_segments = 30;
-            let filled_segments = ((num_segments as f32) * progress).ceil() as i32;
-            
-            // Draw arc starting from top, going clockwise
-            for i in 0..=filled_segments {
-                let angle1 = -std::f32::consts::PI / 2.0 + (i as f32 / num_segments as f32) * std::f32::consts::PI * 2.0;
-                let angle2 = -std::f32::consts::PI / 2.0 + ((i as f32 + 1.0) / num_segments as f32) * std::f32::consts::PI * 2.0;
-                
-                let x1 = self.pos.x + arc_radius * angle1.cos();
-                let y1 = self.pos.y + arc_radius * angle1.sin();
-                let x2 = self.pos.x + arc_radius * angle2.cos();
-                let y2 = self.pos.y + arc_radius * angle2.sin();
-                
-                draw_line(x1, y1, x2, y2, 2.0, WHITE);
             }
         }
     }
@@ -255,6 +210,7 @@ struct GameConfig {
 struct Game {
     players: Vec<Player>,
     inputs: Vec<PlayerInput>,
+    colors: Vec<Color>,
     scores: Vec<u32>,
     round_state: RoundState,
 
@@ -385,13 +341,58 @@ impl Game {
         }
     }
 
+    fn draw_player(&self, player_idx: usize, show_direction: bool) {
+        let player = &self.players[player_idx];
+        let color = self.colors[player_idx];
+        for i in 1..player.trail.len() {
+            if let (Some(a), Some(b)) = (player.trail[i - 1], player.trail[i]) {
+                draw_line(a.x, a.y, b.x, b.y, player.trail_thickness, color);
+            }
+        }
+        if show_direction {
+            let dir_vec = player.get_direction_vector() * 10.0;
+            draw_line(
+                player.pos.x,
+                player.pos.y,
+                player.pos.x + dir_vec.x,
+                player.pos.y + dir_vec.y,
+                2.0,
+                YELLOW,
+            );
+        }
+        
+        draw_circle(player.pos.x, player.pos.y, 4.0, color);
+        
+        // Draw powerup effect duration indicator as arc beneath head
+        if player.effect_timer > 0.0 {
+            let max_duration = 5.0;
+            let progress = (player.effect_timer / max_duration).clamp(0.0, 1.0);
+            let arc_radius = 5.0;
+            let num_segments = 30;
+            let filled_segments = ((num_segments as f32) * progress).ceil() as i32;
+            
+            // Draw arc starting from top, going clockwise
+            for i in 0..=filled_segments {
+                let angle1 = -std::f32::consts::PI / 2.0 + (i as f32 / num_segments as f32) * std::f32::consts::PI * 2.0;
+                let angle2 = -std::f32::consts::PI / 2.0 + ((i as f32 + 1.0) / num_segments as f32) * std::f32::consts::PI * 2.0;
+                
+                let x1 = player.pos.x + arc_radius * angle1.cos();
+                let y1 = player.pos.y + arc_radius * angle1.sin();
+                let x2 = player.pos.x + arc_radius * angle2.cos();
+                let y2 = player.pos.y + arc_radius * angle2.sin();
+                
+                draw_line(x1, y1, x2, y2, 2.0, WHITE);
+            }
+        }
+    }
+
     fn draw(&self) {
         draw_border();
 
         let show_direction = matches!(self.round_state, RoundState::Countdown { .. });
 
-        for p in &self.players {
-            p.draw(show_direction);
+        for player_idx in 0..self.players.len() {
+            self.draw_player(player_idx, show_direction);
         }
         // Powerups
         for p in &self.powerups {
@@ -417,7 +418,7 @@ impl Game {
                  panel_x,
                  80.0 + i as f32 * 30.0,
                  25.0,
-                 self.players[i].color
+                 self.colors[i]
             );
         }
         // Powerup info
@@ -1074,6 +1075,7 @@ impl Menu {
         use macroquad::rand::gen_range;
 
         let mut players: Vec<Player> = vec![];
+        let mut colors: Vec<Color> = vec![];
 
         let margin = 50.0;
         let min_distance = 80.0;
@@ -1093,7 +1095,8 @@ impl Menu {
             }
             let dir = gen_range(0.0, std::f32::consts::PI * 2.0);
 
-            players.push(Player::new(pos, dir, c.color));
+            players.push(Player::new(pos, dir));
+            colors.push(c.color);
         }
 
         let inputs = self.configs.iter().map(|c| {
@@ -1106,6 +1109,7 @@ impl Menu {
         Game {
             players,
             inputs,
+            colors,
             scores: vec![0; self.configs.len()],
             round_state: RoundState::Countdown { timer: 3.0 },
             config: self.game_config.clone(),
