@@ -51,7 +51,6 @@ struct  Powerup {
 struct Player {
     pos: Vec2,
     dir: f32,
-    alive: bool,
     trail: Vec<Option<Vec2>>,
 
     hole_timer: f32,
@@ -62,8 +61,6 @@ struct Player {
     turn_multiplier: f32,
     effect_timer: f32,
     trail_thickness: f32,
-    
-    death_order: Option<usize>,
 }
 
 impl Player {
@@ -71,7 +68,6 @@ impl Player {
         Self {
             pos,
             dir,
-            alive: true,
             trail: vec![Some(pos)],
             hole_timer: 0.0,
             hole_cooldown: rand::gen_range(1.5, 3.0),
@@ -80,7 +76,6 @@ impl Player {
             turn_multiplier: 1.0,
             effect_timer: 0.0,
             trail_thickness: 3.0,
-            death_order: None,
         }
     }
 
@@ -89,7 +84,6 @@ impl Player {
     }
 
     fn update(&mut self, dt: f32, turn: f32, config: &GameConfig) {
-        if !self.alive { return; }
 
         self.dir += turn * config.turn_speed * dt;
         self.hole_timer += dt;
@@ -138,14 +132,12 @@ impl Player {
         self.dir = dir;
         self.trail.clear();
         self.trail.push(Some(pos));
-        self.alive = true;
         self.hole_timer = 0.0;
         self.in_hole = false;
         self.speed_multiplier = 1.0;
         self.turn_multiplier = 1.0;
         self.effect_timer = 0.0;
         self.trail_thickness = 3.0;
-        self.death_order = None;
     }
 }
 
@@ -211,6 +203,7 @@ struct Game {
     players: Vec<Player>,
     inputs: Vec<PlayerInput>,
     colors: Vec<Color>,
+    death_orders: Vec<Option<usize>>,
     scores: Vec<u32>,
     round_state: RoundState,
 
@@ -233,6 +226,17 @@ fn draw_border() {
 }
 
 impl Game {
+    fn is_player_alive(&self, player_idx: usize) -> bool {
+        self.death_orders[player_idx].is_none()
+    }
+
+    fn kill_player(&mut self, player_idx: usize) {
+        if self.is_player_alive(player_idx) {
+            let death_count = self.death_orders.iter().filter(|d| d.is_some()).count();
+            self.death_orders[player_idx] = Some(death_count + 1);
+        }
+    }
+
     fn update(&mut self, dt: f32) {
 
         if let RoundState::Countdown { timer } = &mut self.round_state {
@@ -279,10 +283,10 @@ impl Game {
                 p.update(dt, turn, &self.config);
             }
 
-            check_collision(&mut self.players);
+            check_collision(&mut self.players, &mut self.death_orders);
 
             for i in 0..self.players.len() {
-                if !self.players[i].alive { continue; }
+                if !self.is_player_alive(i) { continue; }
 
                 let player_pos = self.players[i].pos;
 
@@ -297,20 +301,17 @@ impl Game {
             }
 
             // Count alive players
-            let alive: Vec<usize> = self.players.iter()
-                .enumerate()
-                .filter(|(_, p)| p.alive)
-                .map(|(i, _)| i)
+            let alive: Vec<usize> = (0..self.players.len())
+                .filter(|&i| self.is_player_alive(i))
                 .collect();
 
             if alive.len() <= 1 {
                 let winner = alive.first().cloned();
 
                 // Award points based on death order
-                for (player_idx, player) in self.players.iter().enumerate() {
-                    if !player.alive && player.death_order.is_some() {
-                        // Points = number of players, minus their death order (0 = first to die gets 1 point, etc.)
-                        let rank = player.death_order.unwrap();
+                for player_idx in 0..self.players.len() {
+                    if let Some(rank) = self.death_orders[player_idx] {
+                        // Points = rank minus 1 (first to die gets 1 point, etc.)
                         let points: usize = rank.saturating_sub(1);
                         self.scores[player_idx] += points as u32;
                     } else if alive.contains(&player_idx) {
@@ -500,13 +501,14 @@ impl Game {
         }
 
         self.powerups.clear();
+        self.death_orders = vec![None; self.players.len()];
 
         self.round_state = RoundState::Countdown { timer: 3.0 };
     }
 
     fn restart_match(&mut self) {
         self.scores = vec![0; self.players.len()];
-        // self.scores.iter_mut().for_each(|s| *s = 0);
+        self.death_orders = vec![None; self.players.len()];
         self.restart_round();
     }
 
@@ -1110,6 +1112,7 @@ impl Menu {
             players,
             inputs,
             colors,
+            death_orders: vec![None; self.configs.len()],
             scores: vec![0; self.configs.len()],
             round_state: RoundState::Countdown { timer: 3.0 },
             config: self.game_config.clone(),
@@ -1129,15 +1132,14 @@ fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     p.distance(closest)
 }
 
-fn check_collision(players: &mut [Player]) {
-    let initial_death_count = players.iter().filter(|pl| !pl.alive).count();
-    
+fn check_collision(players: &mut [Player], death_orders: &mut [Option<usize>]) {    
     for i in 0..players.len() {
-        if !players[i].alive { continue; }
+        if death_orders[i].is_some() { continue; }
 
         let p = players[i].pos;
         if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
-            players[i].alive = false;
+            let death_count = death_orders.iter().filter(|d| d.is_some()).count();
+            death_orders[i] = Some(death_count + 1);
             continue;
         }
 
@@ -1152,21 +1154,14 @@ fn check_collision(players: &mut [Player]) {
 
                 if let (Some(a), Some(b)) = (trail[k - 1], trail[k]) {
                     if distance_to_segment(players[i].pos, a, b) < COLLISION_RADIUS {
-                        players[i].alive = false;
+                        let death_count = death_orders.iter().filter(|d| d.is_some()).count();
+                        death_orders[i] = Some(death_count + 1);
                         break;
                     }
                 }
             }
 
-            if !players[i].alive { break; }
-        }
-    }
-    
-    // Assign death orders in a second pass to handle simultaneous deaths correctly
-    let death_order = initial_death_count + 1;
-    for player in players {
-        if !player.alive && player.death_order.is_none() {
-            player.death_order = Some(death_order);
+            if death_orders[i].is_some() { break; }
         }
     }
 }
