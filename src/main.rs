@@ -15,6 +15,13 @@ enum AppState {
     Playing(Game),
 }
 
+struct Assets {
+    speed_self: Texture2D,
+    speed_others: Texture2D,
+    slow_self: Texture2D,
+    slow_others: Texture2D,
+}
+
 fn window_conf() -> Conf {
     Conf {
         window_title: "Zachtung!".to_string(),
@@ -29,6 +36,17 @@ async fn main() {
     srand(miniquad::date::now() as u64); // Seed random to get different maps each run
 
     let mut state = AppState::Menu(Menu::new());
+
+    let speed_self_texture = load_texture("assets/powerups/speed_self.png").await.unwrap();
+    let speed_others_texture = load_texture("assets/powerups/speed_others.png").await.unwrap();
+    let slow_self_texture = load_texture("assets/powerups/slow_self.png").await.unwrap();
+    let slow_others_texture = load_texture("assets/powerups/slow_others.png").await.unwrap();
+    let assets = Assets {
+        speed_self: speed_self_texture,
+        speed_others: speed_others_texture,
+        slow_self: slow_self_texture,
+        slow_others: slow_others_texture,
+    };
 
     loop {
         clear_background(BLACK);
@@ -46,7 +64,7 @@ async fn main() {
 
             AppState::Playing(game) => {
                 game.update(dt);
-                game.draw();
+                game.draw(&assets);
 
                 let action = game.handle_round_end_input();
                 if action == RoundEndAction::ReturnToMenu {

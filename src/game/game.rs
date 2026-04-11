@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, TRAIL_STEP, GameConfig};
 use super::player::Player;
 use super::powerup::{Powerup, PowerupType, apply_powerup};
+use crate::Assets;
 
 pub struct PlayerInput {
     pub left: KeyCode,
@@ -120,7 +121,7 @@ impl Game {
                 let player_pos = self.players[i].pos;
 
                 self.powerups.retain(|p| {
-                    if player_pos.distance(p.pos) < 10.0 {
+                    if player_pos.distance(p.pos) < 24.0 {
                         apply_powerup(i, p.kind, &mut self.players, &mut self.config);
                         false // remove powerup
                     } else {
@@ -206,22 +207,41 @@ impl Game {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, assets: &Assets) {
         draw_border();
 
         for player_idx in 0..self.players.len() {
             self.draw_player(player_idx);
         }
+        let powerup_size = 48.0;
+        let no_color = Color::from_rgba(255, 255, 255, 255);
         // Powerups
         for p in &self.powerups {
-            let color = match p.kind {
-                PowerupType::SpeedSelf => YELLOW,
-                PowerupType::SpeedOthers => PINK,
-                PowerupType::SlowSelf => ORANGE,
-                PowerupType::SlowOthers => RED,
-                PowerupType::ThickenTrail => BLUE,
+            match p.kind {
+                PowerupType::SpeedSelf => {
+                    let mut params = DrawTextureParams::default();
+                    params.dest_size = Some(vec2(powerup_size, powerup_size));
+                    draw_texture_ex(&assets.speed_self, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                }
+                PowerupType::SpeedOthers => {
+                    let mut params = DrawTextureParams::default();
+                    params.dest_size = Some(vec2(powerup_size, powerup_size));
+                    draw_texture_ex(&assets.speed_others, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                }
+                PowerupType::SlowSelf => {
+                    let mut params = DrawTextureParams::default();
+                    params.dest_size = Some(vec2(powerup_size, powerup_size));
+                    draw_texture_ex(&assets.slow_self, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                }
+                PowerupType::SlowOthers => {
+                    let mut params = DrawTextureParams::default();
+                    params.dest_size = Some(vec2(powerup_size, powerup_size));
+                    draw_texture_ex(&assets.slow_others, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                }
+                PowerupType::ThickenTrail => {
+                    draw_circle(p.pos.x, p.pos.y, 12.0, BLUE);
+                }
             };
-            draw_circle(p.pos.x, p.pos.y, 6.0, color);
         }
 
         // Scores
@@ -244,40 +264,6 @@ impl Game {
                 25.0,
                 self.colors[i],
             );
-        }
-        // Powerup info
-        if self.config.powerups_enabled {
-            let y_offset = 80.0 + self.players.len() as f32 * 30.0 + 40.0;
-            draw_text("POWERUPS:", panel_x, y_offset, 30.0, WHITE);
-            draw_text(
-                "Yellow: Speed Self",
-                panel_x,
-                y_offset + 40.0,
-                20.0,
-                YELLOW,
-            );
-            draw_text(
-                "Pink: Speed Others",
-                panel_x,
-                y_offset + 70.0,
-                20.0,
-                PINK,
-            );
-            draw_text(
-                "Orange: Slow Self",
-                panel_x,
-                y_offset + 100.0,
-                20.0,
-                ORANGE,
-            );
-            draw_text(
-                "Red: Slow Others",
-                panel_x,
-                y_offset + 130.0,
-                20.0,
-                RED,
-            );
-            //draw_text("Blue: Thicken Trail", panel_x, y_offset + 160.0, 20.0, BLUE);
         }
 
         // Countdown display
