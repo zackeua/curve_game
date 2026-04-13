@@ -1,4 +1,4 @@
-use macroquad::prelude::*;
+use macroquad::{input, prelude::*};
 
 use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, TRAIL_STEP, GameConfig};
 use super::player::Player;
@@ -98,17 +98,23 @@ impl Game {
                 }
             }
 
-            for (p, input) in self.players.iter_mut().zip(self.inputs.iter()) {
-                let mut turn = 0.0;
+            // Update alive player positions based on input
+            for player_idx in 0..self.players.len() {
+                if self.is_player_alive(player_idx) {
+                    let input = &self.inputs[player_idx];
+                    let p = &mut self.players[player_idx];
 
-                if is_key_down(input.left) {
-                    turn -= 1.0;
-                }
-                if is_key_down(input.right) {
-                    turn += 1.0;
-                }
+                    let mut turn = 0.0;
 
-                p.update(dt, turn, &self.config);
+                    if is_key_down(input.left) {
+                        turn -= 1.0;
+                    }
+                    if is_key_down(input.right) {
+                        turn += 1.0;
+                    }
+
+                    p.update(dt, turn, &self.config);
+                }
             }
 
             self.check_collision();
