@@ -63,6 +63,7 @@ impl Game {
         if self.is_player_alive(player_idx) {
             let death_count = self.death_orders.iter().filter(|d| d.is_some()).count();
             self.death_orders[player_idx] = Some(death_count + 1);
+            self.players[player_idx].reset_modifiers();
         }
     }
 
@@ -128,7 +129,7 @@ impl Game {
 
                 self.powerups.retain(|p| {
                     if player_pos.distance(p.pos) < 24.0 {
-                        apply_powerup(i, p.kind, &mut self.players, &mut self.config);
+                        apply_powerup(i, p.kind, &mut self.players, &self.death_orders, &mut self.config);
                         false // remove powerup
                     } else {
                         true
@@ -216,9 +217,6 @@ impl Game {
     pub fn draw(&self, assets: &Assets) {
         draw_border();
 
-        for player_idx in 0..self.players.len() {
-            self.draw_player(player_idx);
-        }
         let powerup_size = 48.0;
         let no_color = Color::from_rgba(255, 255, 255, 255);
         // Powerups
@@ -248,6 +246,11 @@ impl Game {
                     draw_circle(p.pos.x, p.pos.y, 12.0, BLUE);
                 }
             };
+        }
+
+        // Draw players and their trails after powerups so powerups don't cover tails
+        for player_idx in 0..self.players.len() {
+            self.draw_player(player_idx);
         }
 
         // Scores

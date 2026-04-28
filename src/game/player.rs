@@ -90,6 +90,13 @@ impl Player {
         }
     }
 
+    pub fn reset_modifiers(&mut self) {
+        self.speed_multiplier = 1.0;
+        self.turn_multiplier = 1.0;
+        self.effect_timer = 0.0;
+        self.trail_thickness = 3.0;
+    }
+
     pub fn reset(&mut self, pos: Vec2, dir: f32) {
         use crate::config::TRAIL_STEP;
         

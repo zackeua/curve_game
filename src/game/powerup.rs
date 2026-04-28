@@ -20,6 +20,7 @@ pub fn apply_powerup(
     player_idx: usize,
     kind: PowerupType,
     players: &mut [Player],
+    death_orders: &[Option<usize>],
     _config: &mut GameConfig,
 ) {
     match kind {
@@ -29,7 +30,8 @@ pub fn apply_powerup(
         }
         PowerupType::SpeedOthers => {
             for (i, p) in players.iter_mut().enumerate() {
-                if i != player_idx {
+                let player_is_alive = death_orders[i].is_none();
+                if i != player_idx && player_is_alive {
                     p.speed_multiplier = 1.5;
                     p.effect_timer = 5.0;
                 }
@@ -37,7 +39,8 @@ pub fn apply_powerup(
         }
         PowerupType::SlowOthers => {
             for (i, p) in players.iter_mut().enumerate() {
-                if i != player_idx {
+                let player_is_alive = death_orders[i].is_none();
+                if i != player_idx && player_is_alive {
                     p.speed_multiplier = 0.5;
                     p.effect_timer = 5.0;
                 }
