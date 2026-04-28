@@ -159,13 +159,24 @@ impl Game {
                 }
 
                 // Check if any player has reached the target score
-                let mut match_winner = None;
-                for (i, &score) in self.scores.iter().enumerate() {
-                    if score >= self.config.target_score {
-                        match_winner = Some(i);
-                        break;
+                let target_reached: Vec<_> = self.scores.iter().enumerate()
+                    .filter(|(_, score)| *score >= &self.config.target_score)
+                    .collect();
+
+                let match_winner = if target_reached.is_empty() {
+                    None
+                } else {
+                    let max_score = target_reached.iter().map(|(_, score)| *score).max().unwrap();
+                    let tied_winners: Vec<_> = target_reached.iter()
+                        .filter(|(_, score)| *score == max_score)
+                        .collect();
+                    
+                    if tied_winners.len() == 1 {
+                        Some(tied_winners[0].0)
+                    } else {
+                        None // Multiple players tied at max score
                     }
-                }
+                };
 
                 if let Some(w) = match_winner {
                     self.round_state = RoundState::MatchOver { winner: Some(w) };
