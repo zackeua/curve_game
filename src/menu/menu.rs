@@ -458,12 +458,12 @@ impl Menu {
         );
         
         // Color indicator circle
-        draw_circle(340.0, y + 13.0, 6.0, config.color);
+        draw_circle(330.0, y + 13.0, 6.0, config.color);
         
-        // Remove button (×)
-        let remove_hover = is_mouse_over(360.0, y, 15.0, 35.0);
-        let remove_color = if remove_hover { YELLOW } else { WHITE };
-        draw_text("×", 362.0, y + 20.0, 20.0, remove_color);
+        // Remove button
+        let remove_hover = is_mouse_over(348.0, y, 22.0, 35.0);
+        let remove_color = if remove_hover { RED } else { Color::from_rgba(120, 80, 80, 255) };
+        draw_text("×", 352.0, y + 19.0, 22.0, remove_color);
     }
 
     fn draw_config_section(&self) {
