@@ -196,7 +196,18 @@ impl Menu {
         let list_base_y = 210.0;
         for i in 0..self.configs.len() {
             let y = list_base_y + i as f32 * 40.0;
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, y, 350.0, 35.0) {
+            
+            // Check for remove button click
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(340.0, y, 30.0, 35.0) {
+                self.configs.remove(i);
+                if self.selected >= self.configs.len() && self.selected > 0 {
+                    self.selected -= 1;
+                }
+                return;
+            }
+            
+            // Select player with mouse
+            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, y, 320.0, 35.0) {
                 self.selected = i;
             }
         }
@@ -448,6 +459,11 @@ impl Menu {
         
         // Color indicator circle
         draw_circle(340.0, y + 13.0, 6.0, config.color);
+        
+        // Remove button (×)
+        let remove_hover = is_mouse_over(360.0, y, 15.0, 35.0);
+        let remove_color = if remove_hover { YELLOW } else { WHITE };
+        draw_text("×", 362.0, y + 20.0, 20.0, remove_color);
     }
 
     fn draw_config_section(&self) {
@@ -478,7 +494,8 @@ impl Menu {
         // Start button at the bottom
         let start_y = base_y + 360.0;
         let start_hover = is_mouse_over(section_x, start_y, 180.0, 40.0);
-        let btn_color = if start_hover || !self.is_ready() { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
+        let btn_color = if start_hover { YELLOW }
+                else if self.is_ready() { Color::from_rgba(255, 255, 255, 255) } else { Color::from_rgba(100, 100, 100, 255) };
         let btn_bg = if !self.is_ready() { Color::from_rgba(100, 50, 50, 255) } else { Color::from_rgba(50, 100, 50, 255) };
         
         draw_rectangle(section_x, start_y, 180.0, 40.0, btn_bg);
