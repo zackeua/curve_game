@@ -36,6 +36,7 @@ pub struct Game {
 
     pub powerups: Vec<Powerup>,
     pub spawn_timer: f32,
+    pub paused: bool,
 }
 
 fn draw_border() {
@@ -77,6 +78,15 @@ impl Game {
         }
 
         if let RoundState::Playing = self.round_state {
+            // Check for pause toggle
+            if is_key_pressed(KeyCode::Backspace) {
+                self.paused = !self.paused;
+            }
+
+            // Skip game updates if paused
+            if self.paused {
+                return;
+            }
             if self.config.powerups_enabled {
                 self.spawn_timer += dt;
                 if self.spawn_timer > 5.0 {
@@ -296,6 +306,12 @@ impl Game {
                 120.0,
                 if countdown > 1 { YELLOW } else { YELLOW },
             );
+        }
+
+        // Pause indicator
+        if self.paused {
+            draw_text("PAUSED", SCREEN_W / 2.0 - 80.0, SCREEN_H / 2.0 - 20.0, 60.0, YELLOW);
+            draw_text("Press BACKSPACE to resume", SCREEN_W / 2.0 - 130.0, SCREEN_H / 2.0 + 40.0, 25.0, WHITE);
         }
 
         // results

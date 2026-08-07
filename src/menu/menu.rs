@@ -77,7 +77,7 @@ impl Menu {
         ) {
             return true;
         }
-        if key == KeyCode::N || key == KeyCode::Space || key == KeyCode::C || key == KeyCode::Enter {
+        if key == KeyCode::N || key == KeyCode::Space || key == KeyCode::C || key == KeyCode::Enter || key == KeyCode::Backspace {
             return true;
         }
         false
@@ -622,6 +622,7 @@ impl Menu {
             config: self.game_config.clone(),
             powerups: vec![],
             spawn_timer: 0.0,
+            paused: false,
         }
     }
 }
