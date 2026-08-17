@@ -5,8 +5,8 @@ use crate::game::{Game, Player, PlayerInput, RoundState};
 
 #[derive(Clone)]
 pub struct PlayerConfig {
-    pub left: Option<KeyCode>,
-    pub right: Option<KeyCode>,
+    pub left: Option<String>,
+    pub right: Option<String>,
     pub color: Color,
 }
 
@@ -35,22 +35,121 @@ fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
     mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
-fn key_to_string(key: Option<KeyCode>) -> String {
+fn key_display(key: Option<&str>) -> String {
     match key {
-        Some(k) => match k {
-            KeyCode::Left => "Left".to_string(),
-            KeyCode::Right => "Right".to_string(),
-            KeyCode::Up => "Up".to_string(),
-            KeyCode::Down => "Down".to_string(),
-            _ => format!("{:?}", k),
-        },
         None => "-".to_string(),
+        Some(k) => match k {
+            "ArrowLeft"  => "\u{2190}".to_string(),
+            "ArrowRight" => "\u{2192}".to_string(),
+            "ArrowUp"    => "\u{2191}".to_string(),
+            "ArrowDown"  => "\u{2193}".to_string(),
+            " "          => "Space".to_string(),
+            "Enter"      => "Enter".to_string(),
+            "Escape"     => "Esc".to_string(),
+            "Backspace"  => "BkSp".to_string(),
+            "Tab"        => "Tab".to_string(),
+            "Shift"      => "Shift".to_string(),
+            "Control"    => "Ctrl".to_string(),
+            "Alt"        => "Alt".to_string(),
+            s            => s.to_string(),
+        },
     }
+}
+
+// -- Config serialization (hand-rolled JSON) -----------------------------------
+
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn serialize_configs(configs: &[PlayerConfig]) -> String {
+    let mut out = String::from("[");
+    for (i, c) in configs.iter().enumerate() {
+        if i > 0 { out.push(','); }
+        let right = json_escape(c.left.as_deref().unwrap_or(""));
+        let left = json_escape(c.right.as_deref().unwrap_or(""));
+        out.push_str(&format!(
+            "{{\"left\":\"{}\",\"right\":\"{}\",\"cr\":{:.6},\"cg\":{:.6},\"cb\":{:.6}}}",
+            left, right, c.color.r, c.color.g, c.color.b
+        ));
+    }
+    out.push(']');
+    out
+}
+
+fn parse_str_field<'a>(obj: &'a str, field: &str) -> Option<String> {
+    let needle = format!("\"{}\": \"", field);
+    let needle2= format!("\"{}\": \"", field);
+    let start_offset = obj.find(&needle)
+        .map(|p| p + needle.len())
+        .or_else(|| obj.find(&needle2).map(|p| p + needle2.len()))?;
+    let rest = &obj[start_offset..];
+    let mut result = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => break,
+            '\\' => match chars.next()? {
+                '"' => result.push('"'),
+                '\\' => result.push('\\'),
+                other => { result.push('\\'); result.push(other); }
+            },
+            c => result.push(c),
+        }
+    }
+    Some(result)
+}
+
+fn parse_f32_field(obj: &str, field: &str) -> Option<f32> {
+    let needle = format!("\"{}\": ", field);
+    let needle2 = format!("\"{}\": ", field);
+    let start_offset = obj.find(&needle)
+        .map(|p| p + needle.len())
+        .or_else(|| obj.find(&needle2).map(|p| p + needle2.len()))?;
+    let rest = &obj[start_offset..];
+    let end = rest.find(|c: char| c == ',' || c == '}').unwrap_or(rest.len());
+    rest[..end].trim().parse().ok()
+}
+
+fn deserialize_configs(json: &str) -> Vec<PlayerConfig> {
+    let mut configs = Vec::new();
+    let mut depth = 0i32;
+    let mut obj_start: Option<usize> = None;
+    for (i, c) in json.char_indices() {
+        match c {
+            '{' => {
+                depth += 1;
+                if depth == 1 { obj_start = Some(i); }
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start) = obj_start.take() {
+                        let obj = &json[start..=i];
+                        let left = parse_str_field(obj, "left");
+                        let right = parse_str_field(obj, "right");
+                        let cr = parse_f32_field(obj, "cr");
+                        let cg = parse_f32_field(obj, "cg");
+                        let cb = parse_f32_field(obj, "cb");
+                        if let (Some(cr), Some(cg), Some(cb)) = (cr, cg, cb) {
+                            configs.push(PlayerConfig {
+                                left: left.filter(|s| !s.is_empty()),
+                                right: right.filter(|s| !s.is_empty()),
+                                color: Color::new(cr, cg, cb, 1.0),
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    configs
 }
 
 impl Menu {
     pub fn new() -> Self {
-        Self {
+        let mut menu = Self {
             configs: vec![],
             selected: 0,
             binding: BindingState::None,
@@ -68,19 +167,18 @@ impl Menu {
             mouse_x: 0.0,
             mouse_y: 0.0,
             color_picker_open: None,
-        }
+        };
+        menu.load_config();
+        menu
     }
 
-    fn key_in_use(&self, key: KeyCode) -> bool {
-        if self.configs.iter().any(|p|
-            p.left == Some(key) || p.right == Some(key)
-        ) {
+    fn key_in_use(&self, key: &str) -> bool {
+        if self.configs.iter().any(|p| {
+            p.left.as_deref() == Some(key) || p.right.as_deref() == Some(key)
+        }) {
             return true;
         }
-        if key == KeyCode::N || key == KeyCode::Space || key == KeyCode::C || key == KeyCode::Enter || key == KeyCode::Backspace {
-            return true;
-        }
-        false
+        matches!(key, "n" | "N" | " " | "c" | "C" | "Enter" | "Escape")
     }
 
     fn next_free_color(&self) -> Color {
@@ -146,6 +244,7 @@ impl Menu {
                             let (r, g, b) = COLOR_PALETTE[idx];
                             self.configs[player_idx].color = Color::new(r, g, b, 1.0);
                             self.color_picker_open = None;
+                            self.save_config();
                         }
                     }
                 }
@@ -157,16 +256,18 @@ impl Menu {
 
     fn handle_key_binding(&mut self) -> bool {
         if !matches!(self.binding, BindingState::None) {
-            if let Some(key) = get_last_key_pressed() {
-                if !self.key_in_use(key) {
+            if let Some(key) = crate::input::get_last_key() {
+                if !self.key_in_use(&key) {
                     match self.binding {
                         BindingState::Left(i) => {
                             self.configs[i].left = Some(key);
                             self.binding = BindingState::Right(i);
+                            self.save_config();
                         }
                         BindingState::Right(i) => {
                             self.configs[i].right = Some(key);
                             self.binding = BindingState::None;
+                            self.save_config();
                         }
                         _ => {}
                     }
@@ -182,6 +283,7 @@ impl Menu {
         if (is_key_pressed(KeyCode::N)) 
             || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, 135.0, 120.0, 30.0)) {
             self.add_player();
+            self.save_config();
         }
 
         // Select player with keyboard
@@ -203,6 +305,7 @@ impl Menu {
                 if self.selected >= self.configs.len() && self.selected > 0 {
                     self.selected -= 1;
                 }
+                self.save_config();
                 return;
             }
             
@@ -448,8 +551,8 @@ impl Menu {
                 "{}P{} | L:{} R:{}",
                 prefix,
                 index,
-                key_to_string(config.left),
-                key_to_string(config.right)
+                key_display(config.left.as_deref()),
+                key_display(config.right.as_deref())
             ),
             30.0,
             y + 20.0,
@@ -607,8 +710,8 @@ impl Menu {
 
         let inputs = self.configs.iter().map(|c| {
             PlayerInput {
-                left: c.left.unwrap(),
-                right: c.right.unwrap(),
+                left: c.left.clone().unwrap(),
+                right: c.right.clone().unwrap(),
             }
         }).collect();
 
@@ -623,6 +726,17 @@ impl Menu {
             powerups: vec![],
             spawn_timer: 0.0,
             paused: false,
+        }
+    }
+
+    fn save_config(&self) {
+        let json = serialize_configs(&self.configs);
+        crate::input::storage_save_str("curve_game_players", &json);
+    }
+
+    fn load_config(&mut self) {
+        if let Some(json) = crate::input::storage_load_str("curve_game_players") {
+            self.configs = deserialize_configs(&json);
         }
     }
 }
