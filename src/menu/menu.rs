@@ -8,8 +8,8 @@ const SAVE_KEY: &str = "curve_game_menu";
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct PlayerConfig {
-    pub left: Option<String>,
-    pub right: Option<String>,
+    pub left: Option<u16>,
+    pub right: Option<u16>,
     pub color: (f32, f32, f32),
 }
 
@@ -44,40 +44,15 @@ fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
     mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
-fn keycode_from_str(s: &str) -> Option<KeyCode> {
-    Some(match s {
-        "Left" => KeyCode::Left,
-        "Right" => KeyCode::Right,
-        "Up" => KeyCode::Up,
-        "Down" => KeyCode::Down,
-        "A" | "a" => KeyCode::A,
-        "B" | "b" => KeyCode::B,
-        "C" | "c" => KeyCode::C,
-        "D" | "d" => KeyCode::D,
-        "E" | "e" => KeyCode::E,
-        "F" | "f" => KeyCode::F,
-        "G" | "g" => KeyCode::G,
-        "H" | "h" => KeyCode::H,
-        "I" | "i" => KeyCode::I,
-        "J" | "j" => KeyCode::J,
-        "K" | "k" => KeyCode::K,
-        "L" | "l" => KeyCode::L,
-        "M" | "m" => KeyCode::M,
-        "N" | "n" => KeyCode::N,
-        "O" | "o" => KeyCode::O,
-        "P" | "p" => KeyCode::P,
-        "Q" | "q" => KeyCode::Q,
-        "R" | "r" => KeyCode::R,
-        "S" | "s" => KeyCode::S,
-        "T" | "t" => KeyCode::T,
-        "U" | "u" => KeyCode::U,
-        "V" | "v" => KeyCode::V,
-        "W" | "w" => KeyCode::W,
-        "X" | "x" => KeyCode::X,
-        "Y" | "y" => KeyCode::Y,
-        "Z" | "z" => KeyCode::Z,
-        _ => return None,
-    })
+fn keycode_from_u16(v: u16) -> Option<KeyCode> {
+    use std::mem::transmute;
+
+    // Reject obvoiusly invalid values first
+    if v <= KeyCode::Menu as u16 {
+        Some(unsafe { transmute(v) }) // TODO: fix unsafe
+    } else {
+        None
+    }
 }
 
 fn get_last_key() -> Option<String> {
@@ -109,13 +84,14 @@ impl Menu {
         menu
     }
 
-    fn key_in_use(&self, key: &str) -> bool {
+    fn key_in_use(&self, key: u16) -> bool {
         if self.configs.iter().any(|p|
-            p.left.as_deref() == Some(key) || p.right.as_deref() == Some(key)
+            p.left == Some(key) || p.right == Some(key)
         ) {
             return true;
         }
-        matches!(key, "n" | "N" | " " | "c" | "C" | "Enter" | "Escape")
+        //matches!(key, "n" | "N" | " " | "c" | "C" | "Enter" | "Escape")
+        return false;
     }
 
     fn next_free_color(&self) -> (f32, f32, f32) {
@@ -193,16 +169,16 @@ impl Menu {
 
     fn handle_key_binding(&mut self) -> bool {
         if !matches!(self.binding, BindingState::None) {
-            if let Some(key) = get_last_key() {
-                if !self.key_in_use(&key) {
+            if let Some(key) = get_last_key_pressed() {
+                if !self.key_in_use(key as u16) {
                     match self.binding {
                         BindingState::Left(i) => {
-                            self.configs[i].left = Some(key);
+                            self.configs[i].left = Some(key as u16);
                             self.binding = BindingState::Right(i);
                             self.save_config();
                         }
                         BindingState::Right(i) => {
-                            self.configs[i].right = Some(key);
+                            self.configs[i].right = Some(key as u16);
                             self.binding = BindingState::None;
                             self.save_config();
                         }
@@ -494,8 +470,8 @@ impl Menu {
                 "{}P{} | L:{} R:{}",
                 prefix,
                 index,
-                config.left.clone().unwrap_or("-".to_string()),
-                config.right.clone().unwrap_or("-".to_string())
+                char::from_u32(config.left.clone().unwrap_or('-' as u16) as u32).unwrap(),
+                char::from_u32(config.right.clone().unwrap_or('-' as u16) as u32).unwrap()
             ),
             30.0,
             y + 20.0,
@@ -653,8 +629,8 @@ impl Menu {
 
         let inputs = self.configs.iter().map(|c| {
             PlayerInput {
-                left: keycode_from_str(c.left.as_ref().unwrap()).unwrap(),
-                right: keycode_from_str(c.right.as_ref().unwrap()).unwrap(),
+                left: keycode_from_u16(c.left.unwrap()).unwrap(),
+                right: keycode_from_u16(c.right.unwrap()).unwrap(),
             }
         }).collect();
 
