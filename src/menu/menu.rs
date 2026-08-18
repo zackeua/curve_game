@@ -1,13 +1,16 @@
 use macroquad::prelude::*;
+use serde::{Serialize, Deserialize};
 
 use crate::config::{SCREEN_W, SCREEN_H, COLORS, COLOR_PALETTE, SPEED, TURN_SPEED, GameConfig};
 use crate::game::{Game, Player, PlayerInput, RoundState};
 
-#[derive(Clone)]
+const SAVE_KEY: &str = "curve_game_menu";
+
+#[derive(Clone, Deserialize, Serialize)]
 pub struct PlayerConfig {
     pub left: Option<String>,
     pub right: Option<String>,
-    pub color: Color,
+    pub color: (f32, f32, f32),
 }
 
 pub enum BindingState {
@@ -30,121 +33,55 @@ pub struct Menu {
     pub color_picker_open: Option<usize>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct MenuSave {
+    pub players: Vec<PlayerConfig>,
+    pub game_config: GameConfig,
+}
+
 fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
     let (mx, my) = mouse_position();
     mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
-fn key_display(key: Option<&str>) -> String {
-    match key {
-        None => "-".to_string(),
-        Some(k) => match k {
-            "ArrowLeft"  => "\u{2190}".to_string(),
-            "ArrowRight" => "\u{2192}".to_string(),
-            "ArrowUp"    => "\u{2191}".to_string(),
-            "ArrowDown"  => "\u{2193}".to_string(),
-            " "          => "Space".to_string(),
-            "Enter"      => "Enter".to_string(),
-            "Escape"     => "Esc".to_string(),
-            "Backspace"  => "BkSp".to_string(),
-            "Tab"        => "Tab".to_string(),
-            "Shift"      => "Shift".to_string(),
-            "Control"    => "Ctrl".to_string(),
-            "Alt"        => "Alt".to_string(),
-            s            => s.to_string(),
-        },
-    }
+fn keycode_from_str(s: &str) -> Option<KeyCode> {
+    Some(match s {
+        "Left" => KeyCode::Left,
+        "Right" => KeyCode::Right,
+        "Up" => KeyCode::Up,
+        "Down" => KeyCode::Down,
+        "A" | "a" => KeyCode::A,
+        "B" | "b" => KeyCode::B,
+        "C" | "c" => KeyCode::C,
+        "D" | "d" => KeyCode::D,
+        "E" | "e" => KeyCode::E,
+        "F" | "f" => KeyCode::F,
+        "G" | "g" => KeyCode::G,
+        "H" | "h" => KeyCode::H,
+        "I" | "i" => KeyCode::I,
+        "J" | "j" => KeyCode::J,
+        "K" | "k" => KeyCode::K,
+        "L" | "l" => KeyCode::L,
+        "M" | "m" => KeyCode::M,
+        "N" | "n" => KeyCode::N,
+        "O" | "o" => KeyCode::O,
+        "P" | "p" => KeyCode::P,
+        "Q" | "q" => KeyCode::Q,
+        "R" | "r" => KeyCode::R,
+        "S" | "s" => KeyCode::S,
+        "T" | "t" => KeyCode::T,
+        "U" | "u" => KeyCode::U,
+        "V" | "v" => KeyCode::V,
+        "W" | "w" => KeyCode::W,
+        "X" | "x" => KeyCode::X,
+        "Y" | "y" => KeyCode::Y,
+        "Z" | "z" => KeyCode::Z,
+        _ => return None,
+    })
 }
 
-// -- Config serialization (hand-rolled JSON) -----------------------------------
-
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn serialize_configs(configs: &[PlayerConfig]) -> String {
-    let mut out = String::from("[");
-    for (i, c) in configs.iter().enumerate() {
-        if i > 0 { out.push(','); }
-        let right = json_escape(c.left.as_deref().unwrap_or(""));
-        let left = json_escape(c.right.as_deref().unwrap_or(""));
-        out.push_str(&format!(
-            "{{\"left\":\"{}\",\"right\":\"{}\",\"cr\":{:.6},\"cg\":{:.6},\"cb\":{:.6}}}",
-            left, right, c.color.r, c.color.g, c.color.b
-        ));
-    }
-    out.push(']');
-    out
-}
-
-fn parse_str_field<'a>(obj: &'a str, field: &str) -> Option<String> {
-    let needle = format!("\"{}\": \"", field);
-    let needle2= format!("\"{}\": \"", field);
-    let start_offset = obj.find(&needle)
-        .map(|p| p + needle.len())
-        .or_else(|| obj.find(&needle2).map(|p| p + needle2.len()))?;
-    let rest = &obj[start_offset..];
-    let mut result = String::new();
-    let mut chars = rest.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => break,
-            '\\' => match chars.next()? {
-                '"' => result.push('"'),
-                '\\' => result.push('\\'),
-                other => { result.push('\\'); result.push(other); }
-            },
-            c => result.push(c),
-        }
-    }
-    Some(result)
-}
-
-fn parse_f32_field(obj: &str, field: &str) -> Option<f32> {
-    let needle = format!("\"{}\": ", field);
-    let needle2 = format!("\"{}\": ", field);
-    let start_offset = obj.find(&needle)
-        .map(|p| p + needle.len())
-        .or_else(|| obj.find(&needle2).map(|p| p + needle2.len()))?;
-    let rest = &obj[start_offset..];
-    let end = rest.find(|c: char| c == ',' || c == '}').unwrap_or(rest.len());
-    rest[..end].trim().parse().ok()
-}
-
-fn deserialize_configs(json: &str) -> Vec<PlayerConfig> {
-    let mut configs = Vec::new();
-    let mut depth = 0i32;
-    let mut obj_start: Option<usize> = None;
-    for (i, c) in json.char_indices() {
-        match c {
-            '{' => {
-                depth += 1;
-                if depth == 1 { obj_start = Some(i); }
-            }
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    if let Some(start) = obj_start.take() {
-                        let obj = &json[start..=i];
-                        let left = parse_str_field(obj, "left");
-                        let right = parse_str_field(obj, "right");
-                        let cr = parse_f32_field(obj, "cr");
-                        let cg = parse_f32_field(obj, "cg");
-                        let cb = parse_f32_field(obj, "cb");
-                        if let (Some(cr), Some(cg), Some(cb)) = (cr, cg, cb) {
-                            configs.push(PlayerConfig {
-                                left: left.filter(|s| !s.is_empty()),
-                                right: right.filter(|s| !s.is_empty()),
-                                color: Color::new(cr, cg, cb, 1.0),
-                            });
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    configs
+fn get_last_key() -> Option<String> {
+    get_last_key_pressed().map(|k| format!("{:?}", k))
 }
 
 impl Menu {
@@ -173,21 +110,21 @@ impl Menu {
     }
 
     fn key_in_use(&self, key: &str) -> bool {
-        if self.configs.iter().any(|p| {
+        if self.configs.iter().any(|p|
             p.left.as_deref() == Some(key) || p.right.as_deref() == Some(key)
-        }) {
+        ) {
             return true;
         }
         matches!(key, "n" | "N" | " " | "c" | "C" | "Enter" | "Escape")
     }
 
-    fn next_free_color(&self) -> Color {
+    fn next_free_color(&self) -> (f32, f32, f32) {
         for &c in &COLORS {
-            if !self.configs.iter().any(|p| p.color == c) {
-                return c;
+            if !self.configs.iter().any(|p| p.color == (c.r, c.g, c.b)) {
+                return (c.r, c.g, c.b);
             }
         }
-        WHITE
+        (1.0, 1.0, 1.0)
     }
 
     pub fn is_ready(&self) -> bool {
@@ -242,7 +179,7 @@ impl Menu {
                         let idx = row * 5 + col;
                         if idx < COLOR_PALETTE.len() {
                             let (r, g, b) = COLOR_PALETTE[idx];
-                            self.configs[player_idx].color = Color::new(r, g, b, 1.0);
+                            self.configs[player_idx].color = (r, g, b);
                             self.color_picker_open = None;
                             self.save_config();
                         }
@@ -256,7 +193,7 @@ impl Menu {
 
     fn handle_key_binding(&mut self) -> bool {
         if !matches!(self.binding, BindingState::None) {
-            if let Some(key) = crate::input::get_last_key() {
+            if let Some(key) = get_last_key() {
                 if !self.key_in_use(&key) {
                     match self.binding {
                         BindingState::Left(i) => {
@@ -340,14 +277,17 @@ impl Menu {
         // Keyboard: cycle through config items
         if is_key_pressed(KeyCode::U) {
             self.config_selected = (self.config_selected + 1) % 7;
+            self.save_config();
         }
 
         // Keyboard: adjust selected config
         if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
             self.adjust_config_left();
+            self.save_config();
         }
         if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
             self.adjust_config_right();
+            self.save_config();
         }
 
         // Mouse: interact with config items
@@ -359,18 +299,21 @@ impl Menu {
             // Click on config item to select it
             if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 400.0, 35.0) {
                 self.config_selected = i;
+                self.save_config();
             }
             
             // Click left arrow to decrease
             if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(410.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score > 1 {
                 self.config_selected = i;
                 self.adjust_config_left();
+                self.save_config();
             }
             
             // Click right arrow to increase
             if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(760.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score < 99 {
                 self.config_selected = i;
                 self.adjust_config_right();
+                self.save_config();
             }
         }
     }
@@ -544,15 +487,15 @@ impl Menu {
         }
 
         let prefix = if is_selected { "> " } else { "  " };
-        let text_color = config.color;
+        let text_color = Color::new(config.color.0, config.color.1, config.color.2, 1.0);
         
         draw_text(
             &format!(
                 "{}P{} | L:{} R:{}",
                 prefix,
                 index,
-                key_display(config.left.as_deref()),
-                key_display(config.right.as_deref())
+                config.left.clone().unwrap_or("-".to_string()),
+                config.right.clone().unwrap_or("-".to_string())
             ),
             30.0,
             y + 20.0,
@@ -561,7 +504,7 @@ impl Menu {
         );
         
         // Color indicator circle
-        draw_circle(330.0, y + 13.0, 6.0, config.color);
+        draw_circle(330.0, y + 13.0, 6.0, Color::new(config.color.0, config.color.1, config.color.2, 1.0));
         
         // Remove button
         let remove_hover = is_mouse_over(348.0, y, 22.0, 35.0);
@@ -705,13 +648,13 @@ impl Menu {
             let dir = gen_range(0.0, std::f32::consts::PI * 2.0);
 
             players.push(Player::new(pos, dir));
-            colors.push(c.color);
+            colors.push(Color::new(c.color.0, c.color.1, c.color.2, 1.0));
         }
 
         let inputs = self.configs.iter().map(|c| {
             PlayerInput {
-                left: c.left.clone().unwrap(),
-                right: c.right.clone().unwrap(),
+                left: keycode_from_str(c.left.as_ref().unwrap()).unwrap(),
+                right: keycode_from_str(c.right.as_ref().unwrap()).unwrap(),
             }
         }).collect();
 
@@ -730,13 +673,24 @@ impl Menu {
     }
 
     fn save_config(&self) {
-        let json = serialize_configs(&self.configs);
-        crate::input::storage_save_str("curve_game_players", &json);
+        let data = MenuSave {
+            players: self.configs.clone(),
+            game_config: self.game_config.clone(),
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+
+        let storage = &mut quad_storage::STORAGE.lock().unwrap();
+        storage.set(SAVE_KEY, &json);
     }
 
     fn load_config(&mut self) {
-        if let Some(json) = crate::input::storage_load_str("curve_game_players") {
-            self.configs = deserialize_configs(&json);
+        let storage = &mut quad_storage::STORAGE.lock().unwrap();
+        if let Some(json) = storage.get(SAVE_KEY) {
+            if let Ok(data) = serde_json::from_str::<MenuSave>(&json) {
+                self.configs = data.players;
+                self.game_config = data.game_config;
+            }
         }
     }
 }

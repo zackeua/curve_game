@@ -6,8 +6,8 @@ use super::powerup::{Powerup, PowerupType, apply_powerup};
 use crate::Assets;
 
 pub struct PlayerInput {
-    pub left: String,
-    pub right: String,
+    pub left: KeyCode,
+    pub right: KeyCode,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -24,6 +24,7 @@ pub enum RoundEndAction {
     RestartMatch,
     ReturnToMenu,
 }
+
 pub struct Game {
     pub players: Vec<Player>,
     pub inputs: Vec<PlayerInput>,
@@ -117,9 +118,9 @@ impl Game {
 
                     let mut turn = 0.0;
 
-                    if crate::input::is_key_down(&input.left) {
+                    if is_key_down(input.left) {
                         turn -= 1.0;
-                    } else if crate::input::is_key_down(&input.right) {
+                    } else if is_key_down(input.right) {
                         turn += 1.0;
                     }
 

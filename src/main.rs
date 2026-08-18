@@ -7,7 +7,6 @@ use crate::menu::Menu;
 
 mod config;
 mod game;
-mod input;
 mod menu;
 
 

@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use serde::{Serialize, Deserialize};
 
 // ================== CONSTANTS ==================
 
@@ -31,7 +32,7 @@ pub const COLOR_PALETTE: &[(f32, f32, f32); 25] = &[
 
 // ================== GAME CONFIG ==================
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GameConfig {
     pub speed: f32,
     pub turn_speed: f32,
