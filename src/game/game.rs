@@ -1,13 +1,15 @@
 use macroquad::{input, prelude::*};
 
-use crate::config::{SCREEN_W, SCREEN_H, UI_WIDTH, COLLISION_RADIUS, SELF_GRACE_POINTS, TRAIL_STEP, GameConfig};
 use super::player::Player;
 use super::powerup::{Powerup, PowerupType, apply_powerup};
 use crate::Assets;
+use crate::config::{
+    COLLISION_RADIUS, GameConfig, SCREEN_H, SCREEN_W, SELF_GRACE_POINTS, TRAIL_STEP, UI_WIDTH,
+};
 
 pub struct PlayerInput {
-    pub left: KeyCode,
-    pub right: KeyCode,
+    pub left: String,
+    pub right: String,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -24,6 +26,7 @@ pub enum RoundEndAction {
     RestartMatch,
     ReturnToMenu,
 }
+
 pub struct Game {
     pub players: Vec<Player>,
     pub inputs: Vec<PlayerInput>,
@@ -117,10 +120,9 @@ impl Game {
 
                     let mut turn = 0.0;
 
-                    if is_key_down(input.left) {
+                    if crate::input::is_key_down(&input.left) {
                         turn -= 1.0;
-                    }
-                    if is_key_down(input.right) {
+                    } else if crate::input::is_key_down(&input.right) {
                         turn += 1.0;
                     }
 
@@ -139,7 +141,13 @@ impl Game {
 
                 self.powerups.retain(|p| {
                     if player_pos.distance(p.pos) < 24.0 {
-                        apply_powerup(i, p.kind, &mut self.players, &self.death_orders, &mut self.config);
+                        apply_powerup(
+                            i,
+                            p.kind,
+                            &mut self.players,
+                            &self.death_orders,
+                            &mut self.config,
+                        );
                         false // remove powerup
                     } else {
                         true
@@ -169,18 +177,26 @@ impl Game {
                 }
 
                 // Check if any player has reached the target score
-                let target_reached: Vec<_> = self.scores.iter().enumerate()
+                let target_reached: Vec<_> = self
+                    .scores
+                    .iter()
+                    .enumerate()
                     .filter(|(_, score)| *score >= &self.config.target_score)
                     .collect();
 
                 let match_winner = if target_reached.is_empty() {
                     None
                 } else {
-                    let max_score = target_reached.iter().map(|(_, score)| *score).max().unwrap();
-                    let tied_winners: Vec<_> = target_reached.iter()
+                    let max_score = target_reached
+                        .iter()
+                        .map(|(_, score)| *score)
+                        .max()
+                        .unwrap();
+                    let tied_winners: Vec<_> = target_reached
+                        .iter()
                         .filter(|(_, score)| *score == max_score)
                         .collect();
-                    
+
                     if tied_winners.len() == 1 {
                         Some(tied_winners[0].0)
                     } else {
@@ -246,22 +262,46 @@ impl Game {
                 PowerupType::SpeedSelf => {
                     let mut params = DrawTextureParams::default();
                     params.dest_size = Some(vec2(powerup_size, powerup_size));
-                    draw_texture_ex(&assets.speed_self, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                    draw_texture_ex(
+                        &assets.speed_self,
+                        p.pos.x - powerup_size / 2.0,
+                        p.pos.y - powerup_size / 2.0,
+                        no_color,
+                        params,
+                    );
                 }
                 PowerupType::SpeedOthers => {
                     let mut params = DrawTextureParams::default();
                     params.dest_size = Some(vec2(powerup_size, powerup_size));
-                    draw_texture_ex(&assets.speed_others, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                    draw_texture_ex(
+                        &assets.speed_others,
+                        p.pos.x - powerup_size / 2.0,
+                        p.pos.y - powerup_size / 2.0,
+                        no_color,
+                        params,
+                    );
                 }
                 PowerupType::SlowSelf => {
                     let mut params = DrawTextureParams::default();
                     params.dest_size = Some(vec2(powerup_size, powerup_size));
-                    draw_texture_ex(&assets.slow_self, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                    draw_texture_ex(
+                        &assets.slow_self,
+                        p.pos.x - powerup_size / 2.0,
+                        p.pos.y - powerup_size / 2.0,
+                        no_color,
+                        params,
+                    );
                 }
                 PowerupType::SlowOthers => {
                     let mut params = DrawTextureParams::default();
                     params.dest_size = Some(vec2(powerup_size, powerup_size));
-                    draw_texture_ex(&assets.slow_others, p.pos.x - powerup_size / 2.0, p.pos.y - powerup_size / 2.0, no_color, params);
+                    draw_texture_ex(
+                        &assets.slow_others,
+                        p.pos.x - powerup_size / 2.0,
+                        p.pos.y - powerup_size / 2.0,
+                        no_color,
+                        params,
+                    );
                 }
                 PowerupType::ThickenTrail => {
                     draw_circle(p.pos.x, p.pos.y, 12.0, BLUE);
@@ -310,8 +350,20 @@ impl Game {
 
         // Pause indicator
         if self.paused {
-            draw_text("PAUSED", SCREEN_W / 2.0 - 80.0, SCREEN_H / 2.0 - 20.0, 60.0, YELLOW);
-            draw_text("Press BACKSPACE to resume", SCREEN_W / 2.0 - 130.0, SCREEN_H / 2.0 + 40.0, 25.0, WHITE);
+            draw_text(
+                "PAUSED",
+                SCREEN_W / 2.0 - 80.0,
+                SCREEN_H / 2.0 - 20.0,
+                60.0,
+                YELLOW,
+            );
+            draw_text(
+                "Press BACKSPACE to resume",
+                SCREEN_W / 2.0 - 130.0,
+                SCREEN_H / 2.0 + 40.0,
+                25.0,
+                WHITE,
+            );
         }
 
         // results
@@ -357,7 +409,11 @@ impl Game {
                     gen_range(margin, SCREEN_H - margin),
                 );
 
-                if self.players.iter().all(|other| other.pos.distance(pos) > min_distance) {
+                if self
+                    .players
+                    .iter()
+                    .all(|other| other.pos.distance(pos) > min_distance)
+                {
                     break;
                 }
             }

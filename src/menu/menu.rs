@@ -1,14 +1,17 @@
 use macroquad::prelude::*;
 use macroquad::ui::{hash, root_ui, widgets};
+use serde::{Deserialize, Serialize};
 
-use crate::config::{SCREEN_W, SCREEN_H, COLORS, COLOR_PALETTE, SPEED, TURN_SPEED, GameConfig};
+use crate::config::{COLOR_PALETTE, COLORS, GameConfig, SCREEN_H, SCREEN_W, SPEED, TURN_SPEED};
 use crate::game::{Game, Player, PlayerInput, RoundState};
 
-#[derive(Clone)]
+const SAVE_KEY: &str = "curve_game_menu";
+
+#[derive(Clone, Deserialize, Serialize)]
 pub struct PlayerConfig {
-    pub left: Option<KeyCode>,
-    pub right: Option<KeyCode>,
-    pub color: Color,
+    pub left: Option<String>,
+    pub right: Option<String>,
+    pub color: (f32, f32, f32),
 }
 
 pub enum BindingState {
@@ -21,13 +24,13 @@ pub struct Menu {
     pub configs: Vec<PlayerConfig>,
     pub selected: usize,
     pub binding: BindingState,
-    
+
     pub game_config: GameConfig,
     pub config_selected: usize,
-    
+
     pub mouse_x: f32,
     pub mouse_y: f32,
-    
+
     pub color_picker_open: Option<usize>,
     start_requested: bool,
     config_inputs: [String; 6],
@@ -62,27 +65,73 @@ fn remove_button(x: f32, y: f32, width: f32, height: f32) -> bool {
     clicked
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct MenuSave {
+    pub players: Vec<PlayerConfig>,
+    pub game_config: GameConfig,
+}
+
 fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
     let (mx, my) = mouse_position();
     mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
-fn key_to_string(key: Option<KeyCode>) -> String {
-    match key {
-        Some(k) => match k {
-            KeyCode::Left => "Left".to_string(),
-            KeyCode::Right => "Right".to_string(),
-            KeyCode::Up => "Up".to_string(),
-            KeyCode::Down => "Down".to_string(),
-            _ => format!("{:?}", k),
-        },
-        None => "-".to_string(),
-    }
+fn keycode_to_binding(key: KeyCode) -> Option<String> {
+    Some(
+        match key {
+            KeyCode::Left => "ArrowLeft",
+            KeyCode::Right => "ArrowRight",
+            KeyCode::Up => "ArrowUp",
+            KeyCode::Down => "ArrowDown",
+            KeyCode::Space => " ",
+            KeyCode::Enter => "Enter",
+            KeyCode::Escape => "Escape",
+            KeyCode::Tab => "Tab",
+            KeyCode::Backspace => "Backspace",
+            KeyCode::LeftShift | KeyCode::RightShift => "Shift",
+            KeyCode::LeftControl | KeyCode::RightControl => "Control",
+            KeyCode::LeftAlt | KeyCode::RightAlt => "Alt",
+            KeyCode::A => "a",
+            KeyCode::B => "b",
+            KeyCode::C => "c",
+            KeyCode::D => "d",
+            KeyCode::E => "e",
+            KeyCode::F => "f",
+            KeyCode::G => "g",
+            KeyCode::H => "h",
+            KeyCode::I => "i",
+            KeyCode::J => "j",
+            KeyCode::K => "k",
+            KeyCode::L => "l",
+            KeyCode::M => "m",
+            KeyCode::N => "n",
+            KeyCode::O => "o",
+            KeyCode::P => "p",
+            KeyCode::Q => "q",
+            KeyCode::R => "r",
+            KeyCode::S => "s",
+            KeyCode::T => "t",
+            KeyCode::U => "u",
+            KeyCode::V => "v",
+            KeyCode::W => "w",
+            KeyCode::X => "x",
+            KeyCode::Y => "y",
+            KeyCode::Z => "z",
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
+
+fn get_last_binding() -> Option<String> {
+    get_char_pressed()
+        .map(|character| character.to_string())
+        .or_else(|| get_last_key_pressed().and_then(keycode_to_binding))
 }
 
 impl Menu {
     pub fn new() -> Self {
-        Self {
+        let mut menu = Self {
             configs: vec![],
             selected: 0,
             binding: BindingState::None,
@@ -109,33 +158,41 @@ impl Menu {
                 "3.0".to_string(),
                 "20".to_string(),
             ],
-        }
+        };
+        menu.load_config();
+        menu
     }
 
-    fn key_in_use(&self, key: KeyCode) -> bool {
-        if self.configs.iter().any(|p|
-            p.left == Some(key) || p.right == Some(key)
-        ) {
+    fn key_in_use(&self, key: &str) -> bool {
+        if self
+            .configs
+            .iter()
+            .any(|p| p.left.as_deref() == Some(key) || p.right.as_deref() == Some(key))
+        {
             return true;
         }
-        if key == KeyCode::N || key == KeyCode::Space || key == KeyCode::C || key == KeyCode::Enter || key == KeyCode::Backspace {
-            return true;
-        }
-        false
+
+        matches!(
+            key,
+            "n" | "N" | " " | "c" | "C" | "Enter" | "Escape" | "Backspace"
+        )
     }
 
-    fn next_free_color(&self) -> Color {
+    fn next_free_color(&self) -> (f32, f32, f32) {
         for &c in &COLORS {
-            if !self.configs.iter().any(|p| p.color == c) {
-                return c;
+            if !self.configs.iter().any(|p| p.color == (c.r, c.g, c.b)) {
+                return (c.r, c.g, c.b);
             }
         }
-        WHITE
+        (1.0, 1.0, 1.0)
     }
 
     pub fn is_ready(&self) -> bool {
         !self.configs.is_empty()
-            && self.configs.iter().all(|p| p.left.is_some() && p.right.is_some())
+            && self
+                .configs
+                .iter()
+                .all(|p| p.left.is_some() && p.right.is_some())
     }
 
     fn add_player(&mut self) {
@@ -175,7 +232,6 @@ impl Menu {
                 return true;
             }
 
-            // Check for clicks on the color palette
             return true;
         }
         false
@@ -183,16 +239,18 @@ impl Menu {
 
     fn handle_key_binding(&mut self) -> bool {
         if !matches!(self.binding, BindingState::None) {
-            if let Some(key) = get_last_key_pressed() {
-                if !self.key_in_use(key) {
+            if let Some(key) = get_last_binding() {
+                if !self.key_in_use(&key) {
                     match self.binding {
                         BindingState::Left(i) => {
                             self.configs[i].left = Some(key);
                             self.binding = BindingState::Right(i);
+                            self.save_config();
                         }
                         BindingState::Right(i) => {
                             self.configs[i].right = Some(key);
                             self.binding = BindingState::None;
+                            self.save_config();
                         }
                         _ => {}
                     }
@@ -207,6 +265,7 @@ impl Menu {
         // Add player
         if is_key_pressed(KeyCode::N) {
             self.add_player();
+            self.save_config();
         }
 
         // Select player with keyboard
@@ -216,7 +275,6 @@ impl Menu {
         if is_key_pressed(KeyCode::Down) && self.selected + 1 < self.configs.len() {
             self.selected += 1;
         }
-
 
         // Skip remaining player actions if no players
         if self.configs.is_empty() {
@@ -238,18 +296,20 @@ impl Menu {
         // Keyboard: cycle through config items
         if is_key_pressed(KeyCode::U) {
             self.config_selected = (self.config_selected + 1) % 7;
+            self.save_config();
         }
 
         // Keyboard: adjust selected config
         if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
             self.adjust_config_left();
             self.sync_config_input(self.config_selected.min(5));
+            self.save_config();
         }
         if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
             self.adjust_config_right();
             self.sync_config_input(self.config_selected.min(5));
+            self.save_config();
         }
-
     }
 
     pub fn should_start_game(&self) -> bool {
@@ -262,11 +322,13 @@ impl Menu {
             1 => self.game_config.turn_speed = (self.game_config.turn_speed - 0.5).max(1.0),
             2 => self.game_config.hole_duration = (self.game_config.hole_duration - 0.1).max(0.1),
             3 => {
-                self.game_config.hole_interval_min = (self.game_config.hole_interval_min - 0.5).max(0.5);
-            },
+                self.game_config.hole_interval_min =
+                    (self.game_config.hole_interval_min - 0.5).max(0.5);
+            }
             4 => {
-                self.game_config.hole_interval_max = (self.game_config.hole_interval_max - 0.5).max(self.game_config.hole_interval_min + 0.5);
-            },
+                self.game_config.hole_interval_max = (self.game_config.hole_interval_max - 0.5)
+                    .max(self.game_config.hole_interval_min + 0.5);
+            }
             5 => {
                 self.game_config.target_score = (self.game_config.target_score - 1).max(1);
             }
@@ -283,11 +345,13 @@ impl Menu {
             1 => self.game_config.turn_speed = (self.game_config.turn_speed + 0.5).min(10.0),
             2 => self.game_config.hole_duration = (self.game_config.hole_duration + 0.1).min(2.0),
             3 => {
-                self.game_config.hole_interval_min = (self.game_config.hole_interval_min + 0.5).min(5.0);
-            },
+                self.game_config.hole_interval_min =
+                    (self.game_config.hole_interval_min + 0.5).min(5.0);
+            }
             4 => {
-                self.game_config.hole_interval_max = (self.game_config.hole_interval_max + 0.5).min(10.0);
-            },
+                self.game_config.hole_interval_max =
+                    (self.game_config.hole_interval_max + 0.5).min(10.0);
+            }
             5 => {
                 self.game_config.target_score = (self.game_config.target_score + 1).min(99);
             }
@@ -319,8 +383,15 @@ impl Menu {
             0 => self.game_config.speed = value.clamp(50.0, 400.0),
             1 => self.game_config.turn_speed = value.clamp(1.0, 10.0),
             2 => self.game_config.hole_duration = value.clamp(0.1, 2.0),
-            3 => self.game_config.hole_interval_min = value.clamp(0.5, 5.0).min(self.game_config.hole_interval_max - 0.5),
-            4 => self.game_config.hole_interval_max = value.clamp(self.game_config.hole_interval_min + 0.5, 10.0),
+            3 => {
+                self.game_config.hole_interval_min = value
+                    .clamp(0.5, 5.0)
+                    .min(self.game_config.hole_interval_max - 0.5)
+            }
+            4 => {
+                self.game_config.hole_interval_max =
+                    value.clamp(self.game_config.hole_interval_min + 0.5, 10.0)
+            }
             5 => self.game_config.target_score = (value.round() as u32).clamp(1, 99),
             _ => {}
         }
@@ -358,10 +429,24 @@ impl Menu {
 
         // Background panels
         draw_rectangle(10.0, 50.0, 370.0, 530.0, Color::from_rgba(20, 20, 20, 255));
-        draw_rectangle_lines(10.0, 50.0, 370.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
-        
+        draw_rectangle_lines(
+            10.0,
+            50.0,
+            370.0,
+            530.0,
+            2.0,
+            Color::from_rgba(100, 100, 100, 255),
+        );
+
         draw_rectangle(390.0, 50.0, 420.0, 530.0, Color::from_rgba(20, 20, 20, 255));
-        draw_rectangle_lines(390.0, 50.0, 420.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
+        draw_rectangle_lines(
+            390.0,
+            50.0,
+            420.0,
+            530.0,
+            2.0,
+            Color::from_rgba(100, 100, 100, 255),
+        );
 
         // Title
         draw_text("ZACHTUNG!", 20.0, 80.0, 40.0, YELLOW);
@@ -380,17 +465,30 @@ impl Menu {
     fn draw_player_section(&mut self) {
         let section_x = 20.0;
         let section_y = 100.0;
-        
+
         // Section header
         draw_text("PLAYERS", section_x, section_y, 28.0, WHITE);
-        draw_line(section_x, section_y + 10.0, section_x + 150.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
-        
+        draw_line(
+            section_x,
+            section_y + 10.0,
+            section_x + 150.0,
+            section_y + 10.0,
+            2.0,
+            Color::from_rgba(100, 100, 100, 255),
+        );
+
         if button(section_x, section_y + 35.0, 120.0, 30.0, "Add Player") {
             self.add_player();
         }
 
         // Player list header
-        draw_text("Select Player (UP/DOWN):", section_x, section_y + 85.0, 18.0, WHITE);
+        draw_text(
+            "Select Player (UP/DOWN):",
+            section_x,
+            section_y + 85.0,
+            18.0,
+            WHITE,
+        );
 
         // Player list
         for i in 0..self.configs.len() {
@@ -404,7 +502,7 @@ impl Menu {
         if !self.configs.is_empty() {
             let list_height = 40.0 * self.configs.len() as f32;
             let buttons_y = section_y + 120.0 + list_height;
-            
+
             if button(section_x, buttons_y, 170.0, 30.0, "Bind Keys") {
                 self.binding = BindingState::Left(self.selected);
             }
@@ -416,7 +514,13 @@ impl Menu {
         // Key binding prompt
         match &self.binding {
             BindingState::Left(i) => {
-                draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
+                draw_rectangle(
+                    section_x,
+                    520.0,
+                    350.0,
+                    50.0,
+                    Color::from_rgba(50, 0, 0, 255),
+                );
                 draw_text(
                     &format!("P{}: Press LEFT key", i),
                     section_x + 10.0,
@@ -426,7 +530,13 @@ impl Menu {
                 );
             }
             BindingState::Right(i) => {
-                draw_rectangle(section_x, 520.0, 350.0, 50.0, Color::from_rgba(50, 0, 0, 255));
+                draw_rectangle(
+                    section_x,
+                    520.0,
+                    350.0,
+                    50.0,
+                    Color::from_rgba(50, 0, 0, 255),
+                );
                 draw_text(
                     &format!("P{}: Press RIGHT key", i),
                     section_x + 10.0,
@@ -459,25 +569,30 @@ impl Menu {
         }
 
         let prefix = if is_selected { "> " } else { "  " };
-        let text_color = config.color;
-        
+        let text_color = Color::new(config.color.0, config.color.1, config.color.2, 1.0);
+
         draw_text(
             &format!(
                 "{}P{} | L:{} R:{}",
                 prefix,
                 index,
-                key_to_string(config.left),
-                key_to_string(config.right)
+                config.left.as_deref().unwrap_or("-"),
+                config.right.as_deref().unwrap_or("-"),
             ),
             30.0,
             y + 20.0,
             18.0,
             text_color,
         );
-        
+
         // Color indicator circle
-        draw_circle(320.0, y + 13.0, 6.0, config.color);
-        
+        draw_circle(
+            330.0,
+            y + 13.0,
+            6.0,
+            Color::new(config.color.0, config.color.1, config.color.2, 1.0),
+        );
+
         if remove_button(340.0, y - 2.0, 30.0, 35.0) {
             self.configs.remove(index);
             if self.selected >= self.configs.len() && self.selected > 0 {
@@ -489,13 +604,26 @@ impl Menu {
     fn draw_config_section(&mut self) {
         let section_x = 400.0;
         let section_y = 100.0;
-        
+
         // Section header
         draw_text("GAME CONFIG", section_x, section_y, 28.0, WHITE);
-        draw_line(section_x, section_y + 10.0, section_x + 200.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
-        
-        draw_text("Click setting or use (U) to adjust", section_x, section_y + 40.0, 14.0, Color::from_rgba(150, 150, 150, 255));
-        
+        draw_line(
+            section_x,
+            section_y + 10.0,
+            section_x + 200.0,
+            section_y + 10.0,
+            2.0,
+            Color::from_rgba(100, 100, 100, 255),
+        );
+
+        draw_text(
+            "Click setting or use (U) to adjust",
+            section_x,
+            section_y + 40.0,
+            14.0,
+            Color::from_rgba(150, 150, 150, 255),
+        );
+
         let items = [
             format!("Speed: {:.0}", self.game_config.speed),
             format!("Turn Speed: {:.1}", self.game_config.turn_speed),
@@ -503,7 +631,14 @@ impl Menu {
             format!("Hole min: {:.1}", self.game_config.hole_interval_min),
             format!("Hole max: {:.1}", self.game_config.hole_interval_max),
             format!("Target Score: {}", self.game_config.target_score),
-            format!("Powerups: {}", if self.game_config.powerups_enabled { "ON" } else { "OFF" }),
+            format!(
+                "Powerups: {}",
+                if self.game_config.powerups_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            ),
         ];
 
         let base_y = section_y + 70.0;
@@ -540,7 +675,7 @@ impl Menu {
                 self.sync_config_input(index);
             }
         }
-        
+
         // Background
         if is_hovered || is_selected {
             let bg_color = if is_selected {
@@ -553,12 +688,30 @@ impl Menu {
 
         let prefix = if is_selected { ">" } else { " " };
         let text_color = if is_selected { YELLOW } else { WHITE };
-        
+
         // Main text in the middle
         draw_text(prefix, 450.0, y + 20.0, 18.0, text_color);
-        draw_text(text.split(':').next().unwrap_or(text), 475.0, y + 20.0, 18.0, text_color);
+        draw_text(
+            text.split(':').next().unwrap_or(text),
+            475.0,
+            y + 20.0,
+            18.0,
+            text_color,
+        );
 
-        if index == 6 && button(590.0, y, 140.0, 35.0, if self.game_config.powerups_enabled { "ON" } else { "OFF" }) {
+        if index == 6
+            && button(
+                590.0,
+                y,
+                140.0,
+                35.0,
+                if self.game_config.powerups_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                },
+            )
+        {
             self.config_selected = index;
             self.adjust_config_right();
         }
@@ -567,12 +720,17 @@ impl Menu {
     fn draw_config_inputs(&mut self) {
         for index in 0..6 {
             let y = 170.0 + index as f32 * 50.0;
-            root_ui().window(hash!("config-input-window", index), vec2(590.0, y), vec2(140.0, 35.0), |ui| {
-                widgets::InputText::new(hash!("config", index))
-                    .size(vec2(140.0, 35.0))
-                    .filter_numbers()
-                    .ui(ui, &mut self.config_inputs[index]);
-            });
+            root_ui().window(
+                hash!("config-input-window", index),
+                vec2(590.0, y),
+                vec2(140.0, 35.0),
+                |ui| {
+                    widgets::InputText::new(hash!("config", index))
+                        .size(vec2(140.0, 35.0))
+                        .filter_numbers()
+                        .ui(ui, &mut self.config_inputs[index]);
+                },
+            );
         }
 
         for index in 0..6 {
@@ -582,8 +740,20 @@ impl Menu {
 
     fn draw_color_picker(&mut self, player_idx: usize) {
         let title_y = 100.0;
-        draw_text(&format!("Pick color for P{}", player_idx), 420.0, title_y, 24.0, YELLOW);
-        draw_text("Click color or press ESC to cancel", 420.0, title_y + 35.0, 14.0, Color::from_rgba(150, 150, 150, 255));
+        draw_text(
+            &format!("Pick color for P{}", player_idx),
+            420.0,
+            title_y,
+            24.0,
+            YELLOW,
+        );
+        draw_text(
+            "Click color or press ESC to cancel",
+            420.0,
+            title_y + 35.0,
+            14.0,
+            Color::from_rgba(150, 150, 150, 255),
+        );
 
         // Draw color palette (5x5 grid)
         for row in 0..5 {
@@ -592,17 +762,19 @@ impl Menu {
                 if idx < COLOR_PALETTE.len() {
                     let x = 450.0 + col as f32 * 50.0;
                     let y = 200.0 + row as f32 * 40.0;
-                    
+
                     let (r, g, b) = COLOR_PALETTE[idx];
                     let color = Color::new(r, g, b, 1.0);
-                    if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(x, y, 40.0, 30.0) {
-                        self.configs[player_idx].color = color;
+                    if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(x, y, 40.0, 30.0)
+                    {
+                        self.configs[player_idx].color = (r, g, b);
                         self.color_picker_open = None;
+                        self.save_config();
                     }
-                    
+
                     // Draw color box
                     draw_rectangle(x, y, 40.0, 30.0, color);
-                    
+
                     // Highlight on hover
                     if is_mouse_over(x, y, 40.0, 30.0) {
                         draw_rectangle_lines(x, y, 40.0, 30.0, 3.0, YELLOW);
@@ -639,15 +811,17 @@ impl Menu {
             let dir = gen_range(0.0, std::f32::consts::PI * 2.0);
 
             players.push(Player::new(pos, dir));
-            colors.push(c.color);
+            colors.push(Color::new(c.color.0, c.color.1, c.color.2, 1.0));
         }
 
-        let inputs = self.configs.iter().map(|c| {
-            PlayerInput {
-                left: c.left.unwrap(),
-                right: c.right.unwrap(),
-            }
-        }).collect();
+        let inputs = self
+            .configs
+            .iter()
+            .map(|c| PlayerInput {
+                left: c.left.clone().unwrap(),
+                right: c.right.clone().unwrap(),
+            })
+            .collect();
 
         Game {
             players,
@@ -660,6 +834,28 @@ impl Menu {
             powerups: vec![],
             spawn_timer: 0.0,
             paused: false,
+        }
+    }
+
+    fn save_config(&self) {
+        let data = MenuSave {
+            players: self.configs.clone(),
+            game_config: self.game_config.clone(),
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+
+        let storage = &mut quad_storage::STORAGE.lock().unwrap();
+        storage.set(SAVE_KEY, &json);
+    }
+
+    fn load_config(&mut self) {
+        let storage = &mut quad_storage::STORAGE.lock().unwrap();
+        if let Some(json) = storage.get(SAVE_KEY) {
+            if let Ok(data) = serde_json::from_str::<MenuSave>(&json) {
+                self.configs = data.players;
+                self.game_config = data.game_config;
+            }
         }
     }
 }

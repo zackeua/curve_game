@@ -1,14 +1,14 @@
 use macroquad::prelude::*;
 use macroquad::rand::srand;
 
-use crate::config::{WINDOW_W, WINDOW_H};
+use crate::config::{WINDOW_H, WINDOW_W};
 use crate::game::{Game, RoundEndAction};
 use crate::menu::Menu;
 
 mod config;
 mod game;
+mod input;
 mod menu;
-
 
 enum AppState {
     Menu(Menu),
@@ -37,10 +37,16 @@ async fn main() {
 
     let mut state = AppState::Menu(Menu::new());
 
-    let speed_self_texture = load_texture("assets/powerups/speed_self.png").await.unwrap();
-    let speed_others_texture = load_texture("assets/powerups/speed_others.png").await.unwrap();
+    let speed_self_texture = load_texture("assets/powerups/speed_self.png")
+        .await
+        .unwrap();
+    let speed_others_texture = load_texture("assets/powerups/speed_others.png")
+        .await
+        .unwrap();
     let slow_self_texture = load_texture("assets/powerups/slow_self.png").await.unwrap();
-    let slow_others_texture = load_texture("assets/powerups/slow_others.png").await.unwrap();
+    let slow_others_texture = load_texture("assets/powerups/slow_others.png")
+        .await
+        .unwrap();
     let assets = Assets {
         speed_self: speed_self_texture,
         speed_others: speed_others_texture,
@@ -70,7 +76,7 @@ async fn main() {
                 if action == RoundEndAction::ReturnToMenu {
                     state = AppState::Menu(Menu::new());
                 }
-                
+
                 if is_key_pressed(KeyCode::Escape) {
                     state = AppState::Menu(Menu::new());
                 }

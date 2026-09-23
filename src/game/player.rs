@@ -1,5 +1,5 @@
+use crate::config::{GameConfig, SPEED, TRAIL_STEP};
 use macroquad::prelude::*;
-use crate::config::{GameConfig, TRAIL_STEP, SPEED};
 
 #[derive(Clone)]
 pub struct Player {
@@ -19,7 +19,6 @@ pub struct Player {
 
 impl Player {
     pub fn new(pos: Vec2, dir: f32) -> Self {
-        
         let mut trail = Vec::new();
         // Create initial tail extending backwards
         let dir_vec = vec2(dir.cos(), dir.sin());
@@ -99,10 +98,10 @@ impl Player {
 
     pub fn reset(&mut self, pos: Vec2, dir: f32) {
         use crate::config::TRAIL_STEP;
-        
+
         self.pos = pos;
         self.dir = dir;
-        self.trail.clear();        
+        self.trail.clear();
         // Create initial tail extending backwards
         let dir_vec = vec2(dir.cos(), dir.sin());
         for j in 1..=3 {
