@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use macroquad::ui::{root_ui, widgets};
 
 use crate::config::{SCREEN_W, SCREEN_H, COLORS, COLOR_PALETTE, SPEED, TURN_SPEED, GameConfig};
 use crate::game::{Game, Player, PlayerInput, RoundState};
@@ -28,6 +29,36 @@ pub struct Menu {
     pub mouse_y: f32,
     
     pub color_picker_open: Option<usize>,
+    start_requested: bool,
+}
+
+fn button(x: f32, y: f32, width: f32, height: f32, label: &str) -> bool {
+    widgets::Button::new(label)
+        .position(vec2(x, y))
+        .size(vec2(width, height))
+        .ui(&mut root_ui())
+}
+
+fn remove_button(x: f32, y: f32, width: f32, height: f32) -> bool {
+    let mut ui = root_ui();
+    let mut skin = ui.default_skin();
+    skin.button_style = ui
+        .style_builder()
+        .color(Color::from_rgba(85, 30, 30, 255))
+        .color_hovered(Color::from_rgba(150, 45, 45, 255))
+        .color_clicked(Color::from_rgba(190, 60, 60, 255))
+        .text_color(WHITE)
+        .text_color_hovered(WHITE)
+        .text_color_clicked(WHITE)
+        .font_size(14)
+        .build();
+    ui.push_skin(&skin);
+    let clicked = widgets::Button::new("×")
+        .position(vec2(x, y))
+        .size(vec2(width, height))
+        .ui(&mut ui);
+    ui.pop_skin();
+    clicked
 }
 
 fn is_mouse_over(x: f32, y: f32, w: f32, h: f32) -> bool {
@@ -68,6 +99,7 @@ impl Menu {
             mouse_x: 0.0,
             mouse_y: 0.0,
             color_picker_open: None,
+            start_requested: false,
         }
     }
 
@@ -127,7 +159,7 @@ impl Menu {
     }
 
     fn handle_color_picker(&mut self) -> bool {
-        if let Some(player_idx) = self.color_picker_open {
+        if self.color_picker_open.is_some() {
             // Close color picker on Escape or clicking outside
             if is_key_pressed(KeyCode::Escape) {
                 self.color_picker_open = None;
@@ -135,21 +167,6 @@ impl Menu {
             }
 
             // Check for clicks on the color palette
-            for row in 0..5 {
-                for col in 0..5 {
-                    let x = 450.0 + col as f32 * 50.0;
-                    let y = 200.0 + row as f32 * 40.0;
-                    
-                    if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(x, y, 40.0, 30.0) {
-                        let idx = row * 5 + col;
-                        if idx < COLOR_PALETTE.len() {
-                            let (r, g, b) = COLOR_PALETTE[idx];
-                            self.configs[player_idx].color = Color::new(r, g, b, 1.0);
-                            self.color_picker_open = None;
-                        }
-                    }
-                }
-            }
             return true;
         }
         false
@@ -179,8 +196,7 @@ impl Menu {
 
     fn handle_player_management(&mut self) {
         // Add player
-        if (is_key_pressed(KeyCode::N)) 
-            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, 135.0, 120.0, 30.0)) {
+        if is_key_pressed(KeyCode::N) {
             self.add_player();
         }
 
@@ -192,43 +208,19 @@ impl Menu {
             self.selected += 1;
         }
 
-        // Select player with mouse
-        let list_base_y = 210.0;
-        for i in 0..self.configs.len() {
-            let y = list_base_y + i as f32 * 40.0;
-            
-            // Check for remove button click
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(340.0, y, 30.0, 35.0) {
-                self.configs.remove(i);
-                if self.selected >= self.configs.len() && self.selected > 0 {
-                    self.selected -= 1;
-                }
-                return;
-            }
-            
-            // Select player with mouse
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, y, 320.0, 35.0) {
-                self.selected = i;
-            }
-        }
 
         // Skip remaining player actions if no players
         if self.configs.is_empty() {
             return;
         }
 
-        let list_height = 40.0 * self.configs.len() as f32;
-        let buttons_y = 220.0 + list_height;
-        
         // Bind keys
-        if (is_key_pressed(KeyCode::Space)) 
-            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, buttons_y, 170.0, 30.0)) {
+        if is_key_pressed(KeyCode::Space) {
             self.binding = BindingState::Left(self.selected);
         }
 
         // Change color - open color picker
-        if (is_key_pressed(KeyCode::C)) 
-            || (is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(200.0, buttons_y, 170.0, 30.0)) {
+        if is_key_pressed(KeyCode::C) {
             self.color_picker_open = Some(self.selected);
         }
     }
@@ -247,38 +239,10 @@ impl Menu {
             self.adjust_config_right();
         }
 
-        // Mouse: interact with config items
-        // section_y = 100.0, base_y = 170.0, each item is 50 units apart
-        let base_y = 170.0;
-        for i in 0..7 {
-            let y = base_y + (i as f32 * 50.0);
-            
-            // Click on config item to select it
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 400.0, 35.0) {
-                self.config_selected = i;
-            }
-            
-            // Click left arrow to decrease
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(410.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score > 1 {
-                self.config_selected = i;
-                self.adjust_config_left();
-            }
-            
-            // Click right arrow to increase
-            if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(760.0, y + 5.0, 30.0, 25.0) && self.game_config.target_score < 99 {
-                self.config_selected = i;
-                self.adjust_config_right();
-            }
-        }
     }
 
     pub fn should_start_game(&self) -> bool {
-        // Calculate start button position (matches draw_config_section)
-        let base_y = 170.0; // section_y (100.0) + 70.0
-        let start_y = base_y + 360.0;
-        let start_x = 400.0;
-        
-        is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(start_x, start_y, 180.0, 40.0)
+        self.start_requested
     }
 
     fn adjust_config_left(&mut self) {
@@ -323,7 +287,23 @@ impl Menu {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&mut self) {
+        {
+            let mut ui = root_ui();
+            let mut skin = ui.default_skin();
+            skin.button_style = ui
+                .style_builder()
+                .color(Color::from_rgba(35, 35, 35, 255))
+                .color_hovered(Color::from_rgba(70, 70, 70, 255))
+                .color_clicked(Color::from_rgba(100, 100, 100, 255))
+                .text_color(WHITE)
+                .text_color_hovered(YELLOW)
+                .text_color_clicked(YELLOW)
+                .font_size(16)
+                .build();
+            ui.push_skin(&skin);
+        }
+
         // Background panels
         draw_rectangle(10.0, 50.0, 370.0, 530.0, Color::from_rgba(20, 20, 20, 255));
         draw_rectangle_lines(10.0, 50.0, 370.0, 530.0, 2.0, Color::from_rgba(100, 100, 100, 255));
@@ -340,9 +320,11 @@ impl Menu {
             self.draw_player_section();
             self.draw_config_section();
         }
+
+        root_ui().pop_skin();
     }
 
-    fn draw_player_section(&self) {
+    fn draw_player_section(&mut self) {
         let section_x = 20.0;
         let section_y = 100.0;
         
@@ -350,53 +332,32 @@ impl Menu {
         draw_text("PLAYERS", section_x, section_y, 28.0, WHITE);
         draw_line(section_x, section_y + 10.0, section_x + 150.0, section_y + 10.0, 2.0, Color::from_rgba(100, 100, 100, 255));
         
-        // Add player button
-        let add_btn_hover = is_mouse_over(section_x, section_y + 35.0, 120.0, 30.0);
-        let btn_color = if add_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
-        draw_rectangle_lines(section_x, section_y + 35.0, 120.0, 30.0, 2.0, btn_color);
-        draw_text(
-            "[N] Add Player",
-            section_x + 10.0,
-            section_y + 55.0,
-            18.0,
-            btn_color
-        );
+        if button(section_x, section_y + 35.0, 120.0, 30.0, "Add Player") {
+            self.add_player();
+        }
 
         // Player list header
         draw_text("Select Player (UP/DOWN):", section_x, section_y + 85.0, 18.0, WHITE);
 
         // Player list
-        for (i, p) in self.configs.iter().enumerate() {
-            self.draw_player_item(i, p, section_y + 110.0);
+        for i in 0..self.configs.len() {
+            if i >= self.configs.len() {
+                break;
+            }
+            let p = self.configs[i].clone();
+            self.draw_player_item(i, &p, section_y + 110.0);
         }
 
         if !self.configs.is_empty() {
             let list_height = 40.0 * self.configs.len() as f32;
             let buttons_y = section_y + 120.0 + list_height;
             
-            // Bind keys button
-            let bind_btn_hover = is_mouse_over(section_x, buttons_y, 170.0, 30.0);
-            let btn_color = if bind_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
-            draw_rectangle_lines(section_x, buttons_y, 170.0, 30.0, 2.0, btn_color);
-            draw_text(
-                "[SPACE] Bind Keys",
-                section_x + 10.0,
-                buttons_y + 20.0,
-                16.0,
-                btn_color
-            );
-
-            // Change color button
-            let color_btn_hover = is_mouse_over(section_x + 180.0, buttons_y, 170.0, 30.0);
-            let btn_color = if color_btn_hover { YELLOW } else { Color::from_rgba(80, 80, 80, 255) };
-            draw_rectangle_lines(section_x + 180.0, buttons_y, 170.0, 30.0, 2.0, btn_color);
-            draw_text(
-                "[C] Change Color",
-                section_x + 190.0,
-                buttons_y + 20.0,
-                16.0,
-                btn_color
-            );
+            if button(section_x, buttons_y, 170.0, 30.0, "Bind Keys") {
+                self.binding = BindingState::Left(self.selected);
+            }
+            if button(section_x + 180.0, buttons_y, 170.0, 30.0, "Change Color") {
+                self.color_picker_open = Some(self.selected);
+            }
         }
 
         // Key binding prompt
@@ -425,11 +386,15 @@ impl Menu {
         }
     }
 
-    fn draw_player_item(&self, index: usize, config: &PlayerConfig, base_y: f32) {
+    fn draw_player_item(&mut self, index: usize, config: &PlayerConfig, base_y: f32) {
         let y = base_y + index as f32 * 40.0;
         let is_selected = index == self.selected;
         let is_hovered = is_mouse_over(20.0, y, 350.0, 35.0);
-        
+
+        if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(20.0, y, 285.0, 35.0) {
+            self.selected = index;
+        }
+
         // Background
         if is_hovered || is_selected {
             let bg_color = if is_selected {
@@ -458,15 +423,17 @@ impl Menu {
         );
         
         // Color indicator circle
-        draw_circle(330.0, y + 13.0, 6.0, config.color);
+        draw_circle(320.0, y + 13.0, 6.0, config.color);
         
-        // Remove button
-        let remove_hover = is_mouse_over(348.0, y, 22.0, 35.0);
-        let remove_color = if remove_hover { RED } else { Color::from_rgba(120, 80, 80, 255) };
-        draw_text("×", 352.0, y + 19.0, 22.0, remove_color);
+        if remove_button(340.0, y - 2.0, 30.0, 35.0) {
+            self.configs.remove(index);
+            if self.selected >= self.configs.len() && self.selected > 0 {
+                self.selected -= 1;
+            }
+        }
     }
 
-    fn draw_config_section(&self) {
+    fn draw_config_section(&mut self) {
         let section_x = 400.0;
         let section_y = 100.0;
         
@@ -493,25 +460,27 @@ impl Menu {
 
         // Start button at the bottom
         let start_y = base_y + 360.0;
-        let start_hover = is_mouse_over(section_x, start_y, 180.0, 40.0);
-        let btn_color = if start_hover { YELLOW }
-                else if self.is_ready() { Color::from_rgba(255, 255, 255, 255) } else { Color::from_rgba(100, 100, 100, 255) };
-        let btn_bg = if !self.is_ready() { Color::from_rgba(100, 50, 50, 255) } else { Color::from_rgba(50, 100, 50, 255) };
-        
-        draw_rectangle(section_x, start_y, 180.0, 40.0, btn_bg);
-        draw_rectangle_lines(section_x, start_y, 180.0, 40.0, 2.0, btn_color);
-        draw_text(
-            "[ENTER] Start",
-            section_x + 20.0,
-            start_y + 27.0,
-            18.0,
-            btn_color
-        );
+        if self.is_ready() && button(section_x, start_y, 180.0, 40.0, "Start") {
+            self.start_requested = true;
+        }
     }
 
-    fn draw_config_item(&self, index: usize, text: &str, y: f32) {
+    fn draw_config_item(&mut self, index: usize, text: &str, y: f32) {
         let is_selected = index == self.config_selected;
         let is_hovered = is_mouse_over(400.0, y, 400.0, 35.0);
+
+        if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(400.0, y, 400.0, 35.0) {
+            self.config_selected = index;
+        }
+
+        if button(410.0, y + 5.0, 30.0, 25.0, "<") {
+            self.config_selected = index;
+            self.adjust_config_left();
+        }
+        if button(760.0, y + 5.0, 30.0, 25.0, ">") {
+            self.config_selected = index;
+            self.adjust_config_right();
+        }
         
         // Background
         if is_hovered || is_selected {
@@ -523,30 +492,22 @@ impl Menu {
             draw_rectangle(400.0, y - 2.0, 400.0, 35.0, bg_color);
         }
 
-        let prefix = if is_selected { "> " } else { "  " };
+        let prefix = if is_selected { ">" } else { " " };
         let text_color = if is_selected { YELLOW } else { WHITE };
         
-        // Draw left arrow button
-        let left_hover = is_mouse_over(410.0, y + 5.0, 30.0, 25.0);
-        draw_rectangle_lines(410.0, y + 5.0, 30.0, 25.0, 1.0, if left_hover { YELLOW } else { Color::from_rgba(60, 60, 60, 255) });
-        draw_text("<", 420.0, y + 20.0, 16.0, if left_hover { YELLOW } else { WHITE });
-        
         // Main text in the middle
+        draw_text(prefix, 450.0, y + 20.0, 18.0, text_color);
         draw_text(
-            &format!("{}{}", prefix, text),
-            450.0,
+            text,
+            500.0,
             y + 20.0,
             18.0,
             text_color,
         );
         
-        // Draw right arrow button
-        let right_hover = is_mouse_over(760.0, y + 5.0, 30.0, 25.0);
-        draw_rectangle_lines(760.0, y + 5.0, 30.0, 25.0, 1.0, if right_hover { YELLOW } else { Color::from_rgba(60, 60, 60, 255) });
-        draw_text(">", 770.0, y + 20.0, 16.0, if right_hover { YELLOW } else { WHITE });
     }
 
-    fn draw_color_picker(&self, player_idx: usize) {
+    fn draw_color_picker(&mut self, player_idx: usize) {
         let title_y = 100.0;
         draw_text(&format!("Pick color for P{}", player_idx), 420.0, title_y, 24.0, YELLOW);
         draw_text("Click color or press ESC to cancel", 420.0, title_y + 35.0, 14.0, Color::from_rgba(150, 150, 150, 255));
@@ -561,13 +522,16 @@ impl Menu {
                     
                     let (r, g, b) = COLOR_PALETTE[idx];
                     let color = Color::new(r, g, b, 1.0);
-                    let is_hovered = is_mouse_over(x, y, 40.0, 30.0);
+                    if is_mouse_button_pressed(MouseButton::Left) && is_mouse_over(x, y, 40.0, 30.0) {
+                        self.configs[player_idx].color = color;
+                        self.color_picker_open = None;
+                    }
                     
                     // Draw color box
                     draw_rectangle(x, y, 40.0, 30.0, color);
                     
                     // Highlight on hover
-                    if is_hovered {
+                    if is_mouse_over(x, y, 40.0, 30.0) {
                         draw_rectangle_lines(x, y, 40.0, 30.0, 3.0, YELLOW);
                     } else {
                         draw_rectangle_lines(x, y, 40.0, 30.0, 1.0, WHITE);
