@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use macroquad::ui::{root_ui, widgets};
+use macroquad::ui::{hash, root_ui, widgets};
 
 use crate::config::{SCREEN_W, SCREEN_H, COLORS, COLOR_PALETTE, SPEED, TURN_SPEED, GameConfig};
 use crate::game::{Game, Player, PlayerInput, RoundState};
@@ -30,6 +30,7 @@ pub struct Menu {
     
     pub color_picker_open: Option<usize>,
     start_requested: bool,
+    config_inputs: [String; 6],
 }
 
 fn button(x: f32, y: f32, width: f32, height: f32, label: &str) -> bool {
@@ -100,6 +101,14 @@ impl Menu {
             mouse_y: 0.0,
             color_picker_open: None,
             start_requested: false,
+            config_inputs: [
+                SPEED.to_string(),
+                TURN_SPEED.to_string(),
+                "0.3".to_string(),
+                "1.5".to_string(),
+                "3.0".to_string(),
+                "20".to_string(),
+            ],
         }
     }
 
@@ -234,9 +243,11 @@ impl Menu {
         // Keyboard: adjust selected config
         if is_key_pressed(KeyCode::Left) && self.game_config.target_score > 1 {
             self.adjust_config_left();
+            self.sync_config_input(self.config_selected.min(5));
         }
         if is_key_pressed(KeyCode::Right) && self.game_config.target_score < 99 {
             self.adjust_config_right();
+            self.sync_config_input(self.config_selected.min(5));
         }
 
     }
@@ -287,6 +298,34 @@ impl Menu {
         }
     }
 
+    fn sync_config_input(&mut self, index: usize) {
+        self.config_inputs[index] = match index {
+            0 => format!("{:.0}", self.game_config.speed),
+            1 => format!("{:.1}", self.game_config.turn_speed),
+            2 => format!("{:.1}", self.game_config.hole_duration),
+            3 => format!("{:.1}", self.game_config.hole_interval_min),
+            4 => format!("{:.1}", self.game_config.hole_interval_max),
+            5 => self.game_config.target_score.to_string(),
+            _ => String::new(),
+        };
+    }
+
+    fn apply_config_input(&mut self, index: usize) {
+        let Ok(value) = self.config_inputs[index].parse::<f32>() else {
+            return;
+        };
+
+        match index {
+            0 => self.game_config.speed = value.clamp(50.0, 400.0),
+            1 => self.game_config.turn_speed = value.clamp(1.0, 10.0),
+            2 => self.game_config.hole_duration = value.clamp(0.1, 2.0),
+            3 => self.game_config.hole_interval_min = value.clamp(0.5, 5.0).min(self.game_config.hole_interval_max - 0.5),
+            4 => self.game_config.hole_interval_max = value.clamp(self.game_config.hole_interval_min + 0.5, 10.0),
+            5 => self.game_config.target_score = (value.round() as u32).clamp(1, 99),
+            _ => {}
+        }
+    }
+
     pub fn draw(&mut self) {
         {
             let mut ui = root_ui();
@@ -300,6 +339,19 @@ impl Menu {
                 .text_color_hovered(YELLOW)
                 .text_color_clicked(YELLOW)
                 .font_size(16)
+                .build();
+            skin.editbox_style = ui
+                .style_builder()
+                .color(Color::from_rgba(25, 25, 25, 255))
+                .color_hovered(Color::from_rgba(35, 35, 35, 255))
+                .color_clicked(Color::from_rgba(35, 35, 35, 255))
+                .color_selected(Color::from_rgba(65, 65, 105, 255))
+                .text_color(WHITE)
+                .font_size(16)
+                .build();
+            skin.window_style = ui
+                .style_builder()
+                .color(Color::from_rgba(0, 0, 0, 0))
                 .build();
             ui.push_skin(&skin);
         }
@@ -319,6 +371,7 @@ impl Menu {
         } else {
             self.draw_player_section();
             self.draw_config_section();
+            self.draw_config_inputs();
         }
 
         root_ui().pop_skin();
@@ -476,10 +529,16 @@ impl Menu {
         if button(410.0, y + 5.0, 30.0, 25.0, "<") {
             self.config_selected = index;
             self.adjust_config_left();
+            if index < 6 {
+                self.sync_config_input(index);
+            }
         }
         if button(760.0, y + 5.0, 30.0, 25.0, ">") {
             self.config_selected = index;
             self.adjust_config_right();
+            if index < 6 {
+                self.sync_config_input(index);
+            }
         }
         
         // Background
@@ -497,14 +556,28 @@ impl Menu {
         
         // Main text in the middle
         draw_text(prefix, 450.0, y + 20.0, 18.0, text_color);
-        draw_text(
-            text,
-            500.0,
-            y + 20.0,
-            18.0,
-            text_color,
-        );
-        
+        draw_text(text.split(':').next().unwrap_or(text), 475.0, y + 20.0, 18.0, text_color);
+
+        if index == 6 && button(590.0, y, 140.0, 35.0, if self.game_config.powerups_enabled { "ON" } else { "OFF" }) {
+            self.config_selected = index;
+            self.adjust_config_right();
+        }
+    }
+
+    fn draw_config_inputs(&mut self) {
+        for index in 0..6 {
+            let y = 170.0 + index as f32 * 50.0;
+            root_ui().window(hash!("config-input-window", index), vec2(590.0, y), vec2(140.0, 35.0), |ui| {
+                widgets::InputText::new(hash!("config", index))
+                    .size(vec2(140.0, 35.0))
+                    .filter_numbers()
+                    .ui(ui, &mut self.config_inputs[index]);
+            });
+        }
+
+        for index in 0..6 {
+            self.apply_config_input(index);
+        }
     }
 
     fn draw_color_picker(&mut self, player_idx: usize) {
