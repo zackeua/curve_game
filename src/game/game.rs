@@ -71,6 +71,41 @@ fn campaign_random_index(seed: &mut u64, length: usize) -> usize {
     (*seed as usize) % length
 }
 
+fn control_pressed(rect: Rect) -> bool {
+    let (mouse_x, mouse_y) = mouse_position();
+    if is_mouse_button_down(MouseButton::Left) && rect.contains(vec2(mouse_x, mouse_y)) {
+        return true;
+    }
+
+    touches().iter().any(|touch| {
+        matches!(
+            touch.phase,
+            TouchPhase::Started | TouchPhase::Stationary | TouchPhase::Moved
+        ) && rect.contains(touch.position)
+    })
+}
+
+fn mobile_controls_enabled(player_count: usize) -> bool {
+    if player_count != 2 {
+        return false;
+    }
+
+    if cfg!(target_os = "android") {
+        return true;
+    }
+
+    cfg!(target_arch = "wasm32") && (screen_width() <= 700.0 || screen_height() <= 500.0)
+}
+
+fn campaign_control_rects() -> (Rect, Rect) {
+    let button_size = 96.0;
+    let y = SCREEN_H - button_size - 24.0;
+    (
+        Rect::new(24.0, y, button_size, button_size),
+        Rect::new(136.0, y, button_size, button_size),
+    )
+}
+
 impl Game {
     pub fn new_campaign(config: GameConfig) -> Self {
         let campaign_base_speed = config.speed;
@@ -304,14 +339,22 @@ impl Game {
             }
 
             // Update alive player positions based on input
+            let (left_control, right_control) = campaign_control_rects();
+            let mobile_controls = mobile_controls_enabled(self.players.len());
+            let left_control_pressed = mobile_controls && control_pressed(left_control);
+            let right_control_pressed = mobile_controls && control_pressed(right_control);
             for player_idx in 0..self.players.len() {
                 if self.is_player_alive(player_idx) {
                     let input = &self.inputs[player_idx];
                     let turn = if input.ai {
                         self.ai_turn(player_idx)
-                    } else if crate::input::is_key_down(&input.left) {
+                    } else if crate::input::is_key_down(&input.left)
+                        || (player_idx == 0 && left_control_pressed)
+                    {
                         -1.0
-                    } else if crate::input::is_key_down(&input.right) {
+                    } else if crate::input::is_key_down(&input.right)
+                        || (player_idx == 0 && right_control_pressed)
+                    {
                         1.0
                     } else {
                         0.0
@@ -531,6 +574,27 @@ impl Game {
         // Draw players and their trails after obstacles so walls do not cover riders.
         for player_idx in 0..self.players.len() {
             self.draw_player(player_idx);
+        }
+
+        if mobile_controls_enabled(self.players.len()) {
+            let (left_control, right_control) = campaign_control_rects();
+            for (rect, label) in [(left_control, "<"), (right_control, ">")] {
+                let active = control_pressed(rect);
+                draw_rectangle(
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
+                    if active {
+                        Color::from_rgba(90, 90, 110, 230)
+                    } else {
+                        Color::from_rgba(35, 35, 45, 210)
+                    },
+                );
+                draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 3.0, WHITE);
+                draw_text(label, rect.x + 31.0, rect.y + 65.0, 52.0, WHITE);
+            }
+            draw_text("P0: A / D", 42.0, SCREEN_H - 4.0, 18.0, GRAY);
         }
 
         // Scores
