@@ -63,7 +63,11 @@ async fn main() {
                 menu.update();
                 menu.draw();
 
-                if (is_key_pressed(KeyCode::Enter) || menu.should_start_game()) && menu.is_ready() {
+                if menu.should_start_single_player() {
+                    state = AppState::Playing(menu.build_single_player_game());
+                } else if (is_key_pressed(KeyCode::Enter) || menu.should_start_game())
+                    && menu.is_ready()
+                {
                     state = AppState::Playing(menu.build_game());
                 }
             }

@@ -1,15 +1,16 @@
-use macroquad::{input, prelude::*};
+use macroquad::prelude::*;
 
 use super::player::Player;
 use super::powerup::{Powerup, PowerupType, apply_powerup};
 use crate::Assets;
 use crate::config::{
-    COLLISION_RADIUS, GameConfig, SCREEN_H, SCREEN_W, SELF_GRACE_POINTS, TRAIL_STEP, UI_WIDTH,
+    COLLISION_RADIUS, GameConfig, SCREEN_H, SCREEN_W, SELF_GRACE_POINTS, UI_WIDTH,
 };
 
 pub struct PlayerInput {
     pub left: String,
     pub right: String,
+    pub ai: bool,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -40,6 +41,11 @@ pub struct Game {
     pub powerups: Vec<Powerup>,
     pub spawn_timer: f32,
     pub paused: bool,
+    pub campaign_level: Option<u32>,
+    pub maze_walls: Vec<(Vec2, Vec2)>,
+    pub campaign_goal: Option<Vec2>,
+    pub(crate) campaign_base_speed: f32,
+    pub(crate) campaign_base_turn_speed: f32,
 }
 
 fn draw_border() {
@@ -58,7 +64,136 @@ fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     p.distance(closest)
 }
 
+fn campaign_random_index(seed: &mut u64, length: usize) -> usize {
+    *seed ^= *seed << 13;
+    *seed ^= *seed >> 7;
+    *seed ^= *seed << 17;
+    (*seed as usize) % length
+}
+
 impl Game {
+    pub fn new_campaign(config: GameConfig) -> Self {
+        let campaign_base_speed = config.speed;
+        let campaign_base_turn_speed = config.turn_speed;
+        let mut game = Self {
+            players: vec![],
+            inputs: vec![PlayerInput {
+                left: "a".to_string(),
+                right: "d".to_string(),
+                ai: false,
+            }],
+            colors: vec![RED],
+            death_orders: vec![None],
+            scores: vec![0],
+            round_state: RoundState::Countdown { timer: 3.0 },
+            config,
+            powerups: vec![],
+            spawn_timer: 0.0,
+            paused: false,
+            campaign_level: Some(1),
+            maze_walls: vec![],
+            campaign_goal: None,
+            campaign_base_speed,
+            campaign_base_turn_speed,
+        };
+        game.setup_campaign_level();
+        game
+    }
+
+    fn setup_campaign_level(&mut self) {
+        let level = self.campaign_level.unwrap_or(1);
+        let mut seed = 0xC0FFEE_u64.wrapping_add(level as u64 * 0x9E37_79B9);
+        let level_index = level.saturating_sub(1) as f32;
+        let columns = (10 + level as usize / 2).min(22);
+        let rows = (7 + level as usize / 3).min(14);
+        let cell_width = SCREEN_W / columns as f32;
+        let cell_height = SCREEN_H / rows as f32;
+
+        self.config.speed = (self.campaign_base_speed * (1.0 + level_index * 0.035)).min(260.0);
+        self.config.turn_speed =
+            (self.campaign_base_turn_speed * (1.0 + level_index * 0.015)).min(8.0);
+        let cell_count = columns * rows;
+        let mut visited = vec![false; cell_count];
+        let mut vertical_walls = vec![true; rows * (columns - 1)];
+        let mut horizontal_walls = vec![true; (rows - 1) * columns];
+        let mut stack = vec![0usize];
+        visited[0] = true;
+
+        while let Some(&current) = stack.last() {
+            let column = current % columns;
+            let row = current / columns;
+            let mut neighbors = Vec::new();
+
+            if column > 0 && !visited[current - 1] {
+                neighbors.push((current - 1, 0));
+            }
+            if column + 1 < columns && !visited[current + 1] {
+                neighbors.push((current + 1, 1));
+            }
+            if row > 0 && !visited[current - columns] {
+                neighbors.push((current - columns, 2));
+            }
+            if row + 1 < rows && !visited[current + columns] {
+                neighbors.push((current + columns, 3));
+            }
+
+            if neighbors.is_empty() {
+                stack.pop();
+                continue;
+            }
+
+            let choice = campaign_random_index(&mut seed, neighbors.len());
+            let (next, direction) = neighbors[choice];
+            match direction {
+                0 => vertical_walls[row * (columns - 1) + column - 1] = false,
+                1 => vertical_walls[row * (columns - 1) + column] = false,
+                2 => horizontal_walls[(row - 1) * columns + column] = false,
+                3 => horizontal_walls[row * columns + column] = false,
+                _ => {}
+            }
+            visited[next] = true;
+            stack.push(next);
+        }
+
+        let mut walls = Vec::new();
+        for row in 0..rows {
+            for column in 0..columns - 1 {
+                if vertical_walls[row * (columns - 1) + column] {
+                    let x = (column + 1) as f32 * cell_width;
+                    let y = row as f32 * cell_height;
+                    walls.push((vec2(x, y), vec2(x, y + cell_height)));
+                }
+            }
+        }
+        for row in 0..rows - 1 {
+            for column in 0..columns {
+                if horizontal_walls[row * columns + column] {
+                    let x = column as f32 * cell_width;
+                    let y = (row + 1) as f32 * cell_height;
+                    walls.push((vec2(x, y), vec2(x + cell_width, y)));
+                }
+            }
+        }
+
+        self.maze_walls = walls;
+        self.campaign_goal = Some(vec2(
+            SCREEN_W - cell_width / 2.0,
+            SCREEN_H - cell_height / 2.0,
+        ));
+        let start_direction = if !vertical_walls[0] {
+            0.0
+        } else {
+            std::f32::consts::FRAC_PI_2
+        };
+        self.players = vec![Player::new(
+            vec2(cell_width / 2.0, cell_height / 2.0),
+            start_direction,
+        )];
+        self.death_orders = vec![None];
+        self.round_state = RoundState::Countdown { timer: 3.0 };
+        self.powerups.clear();
+    }
+
     pub fn is_player_alive(&self, player_idx: usize) -> bool {
         self.death_orders[player_idx].is_none()
     }
@@ -69,6 +204,62 @@ impl Game {
             self.death_orders[player_idx] = Some(death_count + 1);
             self.players[player_idx].reset_modifiers();
         }
+    }
+
+    fn ai_turn(&self, player_idx: usize) -> f32 {
+        let player = &self.players[player_idx];
+        let directions = [-1.0, -0.5, 0.0, 0.5, 1.0];
+        let lookahead = [35.0, 70.0, 105.0, 140.0];
+
+        let mut best_turn = 0.0;
+        let mut best_danger = f32::NEG_INFINITY;
+        for turn in directions {
+            let mut safety = 0.0;
+            for (step, distance) in lookahead.iter().enumerate() {
+                let direction = player.dir + turn * 0.55;
+                let probe = player.pos + vec2(direction.cos(), direction.sin()) * *distance;
+                let wall_margin = probe
+                    .x
+                    .min(SCREEN_W - probe.x)
+                    .min(probe.y)
+                    .min(SCREEN_H - probe.y);
+
+                safety += wall_margin * (step as f32 + 1.0);
+                if wall_margin < 24.0 {
+                    safety -= (24.0 - wall_margin) * 30.0;
+                }
+
+                for other in &self.players {
+                    for segment in other.trail.windows(2) {
+                        if let (Some(a), Some(b)) = (segment[0], segment[1]) {
+                            let trail_distance = distance_to_segment(probe, a, b);
+                            if trail_distance < 28.0 {
+                                safety -= (28.0 - trail_distance) * (step as f32 + 2.0) * 8.0;
+                            }
+                        }
+                    }
+                }
+
+                for (other_idx, other) in self.players.iter().enumerate() {
+                    if other_idx == player_idx || !self.is_player_alive(other_idx) {
+                        continue;
+                    }
+
+                    let other_probe = other.pos + other.get_direction_vector() * *distance;
+                    let head_distance = probe.distance(other_probe);
+                    if head_distance < 48.0 {
+                        safety -= (48.0 - head_distance) * (step as f32 + 2.0) * 14.0;
+                    }
+                }
+            }
+
+            if safety > best_danger {
+                best_danger = safety;
+                best_turn = turn;
+            }
+        }
+
+        best_turn
     }
 
     pub fn update(&mut self, dt: f32) {
@@ -116,21 +307,32 @@ impl Game {
             for player_idx in 0..self.players.len() {
                 if self.is_player_alive(player_idx) {
                     let input = &self.inputs[player_idx];
-                    let p = &mut self.players[player_idx];
-
-                    let mut turn = 0.0;
-
-                    if crate::input::is_key_down(&input.left) {
-                        turn -= 1.0;
+                    let turn = if input.ai {
+                        self.ai_turn(player_idx)
+                    } else if crate::input::is_key_down(&input.left) {
+                        -1.0
                     } else if crate::input::is_key_down(&input.right) {
-                        turn += 1.0;
-                    }
+                        1.0
+                    } else {
+                        0.0
+                    };
 
-                    p.update(dt, turn, &self.config);
+                    self.players[player_idx].update(dt, turn, &self.config);
                 }
             }
 
             self.check_collision();
+
+            if self.campaign_level.is_some()
+                && self.is_player_alive(0)
+                && self
+                    .campaign_goal
+                    .is_some_and(|goal| self.players[0].pos.distance(goal) < 18.0)
+            {
+                self.round_state = RoundState::RoundOver { winner: Some(0) };
+                self.powerups.clear();
+                return;
+            }
 
             for i in 0..self.players.len() {
                 if !self.is_player_alive(i) {
@@ -153,6 +355,14 @@ impl Game {
                         true
                     }
                 });
+            }
+
+            if self.campaign_level.is_some() {
+                if !self.is_player_alive(0) {
+                    self.round_state = RoundState::RoundOver { winner: None };
+                    self.powerups.clear();
+                }
+                return;
             }
 
             // Count alive players
@@ -309,7 +519,16 @@ impl Game {
             };
         }
 
-        // Draw players and their trails after powerups so powerups don't cover tails
+        for (a, b) in &self.maze_walls {
+            draw_line(a.x, a.y, b.x, b.y, 6.0, GRAY);
+        }
+
+        if let Some(goal) = self.campaign_goal {
+            draw_circle(goal.x, goal.y, 16.0, GREEN);
+            draw_circle_lines(goal.x, goal.y, 16.0, 3.0, WHITE);
+        }
+
+        // Draw players and their trails after obstacles so walls do not cover riders.
         for player_idx in 0..self.players.len() {
             self.draw_player(player_idx);
         }
@@ -326,11 +545,20 @@ impl Game {
 
         draw_text("SCORES", panel_x, 40.0, 30.0, WHITE);
 
+        if let Some(level) = self.campaign_level {
+            draw_text(&format!("LEVEL {}", level), panel_x, 70.0, 24.0, YELLOW);
+            draw_text("Reach the green exit", panel_x, 105.0, 16.0, WHITE);
+        }
+
         for (i, score) in self.scores.iter().enumerate() {
             draw_text(
                 &format!("P{}: {}", i, score),
                 panel_x,
-                80.0 + i as f32 * 30.0,
+                if self.campaign_level.is_some() {
+                    135.0 + i as f32 * 30.0
+                } else {
+                    80.0 + i as f32 * 30.0
+                },
                 25.0,
                 self.colors[i],
             );
@@ -369,9 +597,20 @@ impl Game {
         // results
         match self.round_state {
             RoundState::RoundOver { winner } => {
-                let text = match winner {
-                    Some(i) => format!("Player {} wins! Press SPACE to continue", i),
-                    None => "It's a tie! Press SPACE to continue".to_string(),
+                let text = if self.campaign_level.is_some() {
+                    if winner == Some(0) {
+                        format!(
+                            "Level {} complete! Press SPACE for the next level",
+                            self.campaign_level.unwrap()
+                        )
+                    } else {
+                        "You crashed! Press SPACE to retry the level".to_string()
+                    }
+                } else {
+                    match winner {
+                        Some(i) => format!("Player {} wins! Press SPACE to continue", i),
+                        None => "It's a tie! Press SPACE to continue".to_string(),
+                    }
                 };
 
                 draw_text(&text, 200.0, 50.0, 30.0, YELLOW);
@@ -390,6 +629,11 @@ impl Game {
     }
 
     pub fn restart_round(&mut self) {
+        if self.campaign_level.is_some() {
+            self.setup_campaign_level();
+            return;
+        }
+
         use macroquad::rand::gen_range;
 
         let margin = 50.0;
@@ -429,6 +673,12 @@ impl Game {
     }
 
     pub fn restart_match(&mut self) {
+        if let Some(level) = &mut self.campaign_level {
+            *level += 1;
+            self.setup_campaign_level();
+            return;
+        }
+
         self.scores = vec![0; self.players.len()];
         self.death_orders = vec![None; self.players.len()];
         self.restart_round();
@@ -438,8 +688,15 @@ impl Game {
         match self.round_state {
             RoundState::RoundOver { .. } => {
                 if is_key_pressed(KeyCode::Space) {
-                    self.restart_round();
-                    RoundEndAction::RestartRound
+                    if self.campaign_level.is_some()
+                        && matches!(self.round_state, RoundState::RoundOver { winner: Some(0) })
+                    {
+                        self.restart_match();
+                        RoundEndAction::RestartMatch
+                    } else {
+                        self.restart_round();
+                        RoundEndAction::RestartRound
+                    }
                 } else {
                     RoundEndAction::ContinuePlaying
                 }
@@ -466,6 +723,15 @@ impl Game {
 
             let p = self.players[i].pos;
             if p.x < 0.0 || p.x > SCREEN_W || p.y < 0.0 || p.y > SCREEN_H {
+                self.kill_player(i);
+                continue;
+            }
+
+            if self
+                .maze_walls
+                .iter()
+                .any(|&(a, b)| distance_to_segment(p, a, b) < COLLISION_RADIUS + 3.0)
+            {
                 self.kill_player(i);
                 continue;
             }

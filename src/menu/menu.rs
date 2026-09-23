@@ -33,6 +33,7 @@ pub struct Menu {
 
     pub color_picker_open: Option<usize>,
     start_requested: bool,
+    single_player_requested: bool,
     config_inputs: [String; 6],
 }
 
@@ -150,6 +151,7 @@ impl Menu {
             mouse_y: 0.0,
             color_picker_open: None,
             start_requested: false,
+            single_player_requested: false,
             config_inputs: [
                 SPEED.to_string(),
                 TURN_SPEED.to_string(),
@@ -314,6 +316,10 @@ impl Menu {
 
     pub fn should_start_game(&self) -> bool {
         self.start_requested
+    }
+
+    pub fn should_start_single_player(&self) -> bool {
+        self.single_player_requested
     }
 
     fn adjust_config_left(&mut self) {
@@ -651,6 +657,9 @@ impl Menu {
         if self.is_ready() && button(section_x, start_y, 180.0, 40.0, "Start") {
             self.start_requested = true;
         }
+        if button(section_x + 190.0, start_y, 190.0, 40.0, "Single Player") {
+            self.single_player_requested = true;
+        }
     }
 
     fn draw_config_item(&mut self, index: usize, text: &str, y: f32) {
@@ -787,6 +796,15 @@ impl Menu {
     }
 
     pub fn build_game(&self) -> Game {
+        let ai_players = vec![false; self.configs.len()];
+        self.build_game_with_ai(&self.configs, &ai_players)
+    }
+
+    pub fn build_single_player_game(&self) -> Game {
+        Game::new_campaign(self.game_config.clone())
+    }
+
+    fn build_game_with_ai(&self, configs: &[PlayerConfig], ai_players: &[bool]) -> Game {
         use macroquad::rand::gen_range;
 
         let mut players: Vec<Player> = vec![];
@@ -794,10 +812,9 @@ impl Menu {
 
         let margin = 50.0;
         let min_distance = 80.0;
-        for c in &self.configs {
+        for c in configs {
             let mut pos;
 
-            // try until we find a non-colliding position
             loop {
                 pos = vec2(
                     gen_range(margin, SCREEN_W - margin),
@@ -814,12 +831,13 @@ impl Menu {
             colors.push(Color::new(c.color.0, c.color.1, c.color.2, 1.0));
         }
 
-        let inputs = self
-            .configs
+        let inputs = configs
             .iter()
-            .map(|c| PlayerInput {
-                left: c.left.clone().unwrap(),
-                right: c.right.clone().unwrap(),
+            .enumerate()
+            .map(|(i, c)| PlayerInput {
+                left: c.left.clone().unwrap_or_default(),
+                right: c.right.clone().unwrap_or_default(),
+                ai: ai_players[i],
             })
             .collect();
 
@@ -827,13 +845,18 @@ impl Menu {
             players,
             inputs,
             colors,
-            death_orders: vec![None; self.configs.len()],
-            scores: vec![0; self.configs.len()],
+            death_orders: vec![None; configs.len()],
+            scores: vec![0; configs.len()],
             round_state: RoundState::Countdown { timer: 3.0 },
             config: self.game_config.clone(),
             powerups: vec![],
             spawn_timer: 0.0,
             paused: false,
+            campaign_level: None,
+            maze_walls: vec![],
+            campaign_goal: None,
+            campaign_base_speed: self.game_config.speed,
+            campaign_base_turn_speed: self.game_config.turn_speed,
         }
     }
 
