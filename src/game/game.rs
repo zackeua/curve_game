@@ -86,7 +86,7 @@ fn control_pressed(rect: Rect) -> bool {
 }
 
 fn mobile_controls_enabled(player_count: usize) -> bool {
-    if player_count != 2 {
+    if !(1..=2).contains(&player_count) {
         return false;
     }
 
@@ -97,12 +97,18 @@ fn mobile_controls_enabled(player_count: usize) -> bool {
     cfg!(target_arch = "wasm32") && (screen_width() <= 700.0 || screen_height() <= 500.0)
 }
 
-fn campaign_control_rects() -> (Rect, Rect) {
-    let button_size = 96.0;
-    let y = SCREEN_H - button_size - 24.0;
+fn mobile_control_rects(player_count: usize, player_idx: usize) -> (Rect, Rect) {
+    let button_width = 82.0;
+    let button_height = 72.0;
+    let x = SCREEN_W + 10.0;
+    let y = if player_count == 1 {
+        340.0
+    } else {
+        190.0 + player_idx as f32 * 160.0
+    };
     (
-        Rect::new(24.0, y, button_size, button_size),
-        Rect::new(136.0, y, button_size, button_size),
+        Rect::new(x, y, button_width, button_height),
+        Rect::new(x + button_width + 16.0, y, button_width, button_height),
     )
 }
 
@@ -339,22 +345,19 @@ impl Game {
             }
 
             // Update alive player positions based on input
-            let (left_control, right_control) = campaign_control_rects();
             let mobile_controls = mobile_controls_enabled(self.players.len());
-            let left_control_pressed = mobile_controls && control_pressed(left_control);
-            let right_control_pressed = mobile_controls && control_pressed(right_control);
             for player_idx in 0..self.players.len() {
                 if self.is_player_alive(player_idx) {
                     let input = &self.inputs[player_idx];
+                    let (left_control, right_control) =
+                        mobile_control_rects(self.players.len(), player_idx);
+                    let left_control_pressed = mobile_controls && control_pressed(left_control);
+                    let right_control_pressed = mobile_controls && control_pressed(right_control);
                     let turn = if input.ai {
                         self.ai_turn(player_idx)
-                    } else if crate::input::is_key_down(&input.left)
-                        || (player_idx == 0 && left_control_pressed)
-                    {
+                    } else if crate::input::is_key_down(&input.left) || left_control_pressed {
                         -1.0
-                    } else if crate::input::is_key_down(&input.right)
-                        || (player_idx == 0 && right_control_pressed)
-                    {
+                    } else if crate::input::is_key_down(&input.right) || right_control_pressed {
                         1.0
                     } else {
                         0.0
@@ -577,24 +580,33 @@ impl Game {
         }
 
         if mobile_controls_enabled(self.players.len()) {
-            let (left_control, right_control) = campaign_control_rects();
-            for (rect, label) in [(left_control, "<"), (right_control, ">")] {
-                let active = control_pressed(rect);
-                draw_rectangle(
-                    rect.x,
-                    rect.y,
-                    rect.w,
-                    rect.h,
-                    if active {
-                        Color::from_rgba(90, 90, 110, 230)
-                    } else {
-                        Color::from_rgba(35, 35, 45, 210)
-                    },
+            for player_idx in 0..self.players.len() {
+                let (left_control, right_control) =
+                    mobile_control_rects(self.players.len(), player_idx);
+                draw_text(
+                    &format!("P{} TURN", player_idx + 1),
+                    left_control.x,
+                    left_control.y - 12.0,
+                    16.0,
+                    self.colors[player_idx],
                 );
-                draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 3.0, WHITE);
-                draw_text(label, rect.x + 31.0, rect.y + 65.0, 52.0, WHITE);
+                for (rect, label) in [(left_control, "<"), (right_control, ">")] {
+                    let active = control_pressed(rect);
+                    draw_rectangle(
+                        rect.x,
+                        rect.y,
+                        rect.w,
+                        rect.h,
+                        if active {
+                            Color::from_rgba(90, 90, 110, 230)
+                        } else {
+                            Color::from_rgba(35, 35, 45, 210)
+                        },
+                    );
+                    draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 3.0, WHITE);
+                    draw_text(label, rect.x + 25.0, rect.y + 51.0, 42.0, WHITE);
+                }
             }
-            draw_text("P0: A / D", 42.0, SCREEN_H - 4.0, 18.0, GRAY);
         }
 
         // Scores

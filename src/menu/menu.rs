@@ -190,11 +190,15 @@ impl Menu {
     }
 
     pub fn is_ready(&self) -> bool {
+        let touch_controls_available = cfg!(target_os = "android")
+            || (cfg!(target_arch = "wasm32")
+                && (screen_width() <= 700.0 || screen_height() <= 500.0));
         !self.configs.is_empty()
-            && self
+            && (self
                 .configs
                 .iter()
                 .all(|p| p.left.is_some() && p.right.is_some())
+                || (touch_controls_available && self.configs.len() <= 2))
     }
 
     fn add_player(&mut self) {
@@ -835,8 +839,20 @@ impl Menu {
             .iter()
             .enumerate()
             .map(|(i, c)| PlayerInput {
-                left: c.left.clone().unwrap_or_default(),
-                right: c.right.clone().unwrap_or_default(),
+                left: c.left.clone().unwrap_or_else(|| {
+                    if i == 1 {
+                        "ArrowLeft".to_string()
+                    } else {
+                        "a".to_string()
+                    }
+                }),
+                right: c.right.clone().unwrap_or_else(|| {
+                    if i == 1 {
+                        "ArrowRight".to_string()
+                    } else {
+                        "d".to_string()
+                    }
+                }),
                 ai: ai_players[i],
             })
             .collect();
