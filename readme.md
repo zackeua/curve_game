@@ -95,4 +95,6 @@ Then open `http://localhost:8000/index.html` in your web browser.
 - `src/main.rs` - Main game logic and implementation
 - `Cargo.toml` - Project configuration and dependencies
 - `index.html` - Web page for running the WASM build
-- `gl.js` - WebGL bindings for browser
+- `gl.js` - WebGL bindings for browser'
+- `quad-storage.js` - Cache config in browser localstorage
+- `sapp_jsutils.js` - Cache config in browser localstorage
